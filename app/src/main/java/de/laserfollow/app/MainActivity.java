@@ -2,6 +2,7 @@ package de.laserfollow.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
 import android.graphics.*;
 import android.os.*;
 import android.util.Size;
@@ -15,6 +16,10 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.core.resolutionselector.ResolutionSelector;
 import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.core.resolutionselector.AspectRatioStrategy;
+import androidx.camera.view.PreviewView;
+import androidx.camera.view.transform.ImageProxyTransformFactory;
+import androidx.camera.view.transform.OutputTransform;
+import androidx.camera.view.transform.CoordinateTransform;
 import de.laserfollow.core.*;
 import de.laserfollow.core.Geometry.*;
 import de.laserfollow.core.Geometry.Point;
@@ -23,6 +28,7 @@ import java.util.Locale;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@androidx.annotation.OptIn(markerClass=androidx.camera.view.TransformExperimental.class)
 public final class MainActivity extends ComponentActivity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -35,8 +41,11 @@ public final class MainActivity extends ComponentActivity {
     private volatile Detector.Color color=Detector.Color.RED;
     private ProcessCameraProvider provider;
     private ImageAnalysis analysis;
+    private Preview preview;
+    private PreviewView previewView;
+    private FrameMapping mapping;
+    private int boundViewWidth,boundViewHeight;
     private androidx.lifecycle.LiveData<CameraState> cameraState;
-    private OrientationEventListener orientationListener;
     private int orientationRotation=Surface.ROTATION_0;
     private boolean permissionDenied,permissionPending;
     private ExerciseView view;
@@ -75,20 +84,6 @@ public final class MainActivity extends ComponentActivity {
             if(camera && foreground) { if(granted) openCamera(); else fail("Kamerazugriff abgelehnt. Demo ist weiterhin verfügbar."); }
         });
         orientationRotation=getWindowManager().getDefaultDisplay().getRotation();
-        orientationListener=new OrientationEventListener(this) {
-            @Override public void onOrientationChanged(int degrees) {
-                if(degrees==ORIENTATION_UNKNOWN) return;
-                int next=degrees>=45 && degrees<135?Surface.ROTATION_270:
-                    degrees>=135 && degrees<225?Surface.ROTATION_180:
-                    degrees>=225 && degrees<315?Surface.ROTATION_90:Surface.ROTATION_0;
-                if(next==orientationRotation) return;
-                orientationRotation=next;
-                if(analysis!=null) {
-                    analysis.setTargetRotation(next); view.region=null; detectionRegion=null;
-                    view.first=null; calibrating=false; reset("Telefon gedreht. Bitte neu kalibrieren.");
-                }
-            }
-        };
         buildUi();
         setStatus("Bereit · Start beginnt die Simulation");
     }
@@ -102,11 +97,25 @@ public final class MainActivity extends ComponentActivity {
         root.addView(label("LASERFOLLOW",26));
         badge=label("Demo – simulierte Daten",17); badge.setTextColor(0xff54d6c7); root.addView(badge);
         root.addView(label("Ziele erscheinen nur auf dem Telefon. Still sitzen, Telefon fest aufstellen, Rückkamera zur matten Wand.",14));
-        view=new ExerciseView(this); root.addView(view,new LinearLayout.LayoutParams(-1,dp(290)));
-        status=label("",17); root.addView(status);
+        FrameLayout cameraLayer=new FrameLayout(this);
+        root.addView(cameraLayer,new LinearLayout.LayoutParams(-1,dp(290)));
+        previewView=new PreviewView(this);
+        previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setVisibility(View.GONE);
+        cameraLayer.addView(previewView,new FrameLayout.LayoutParams(-1,-1));
+        view=new ExerciseView(this); cameraLayer.addView(view,new FrameLayout.LayoutParams(-1,-1));
+        previewView.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            if(camera && foreground && analysis!=null &&
+                (r-l!=boundViewWidth || b-t!=boundViewHeight)) {
+                closeCamera(); view.region=null; detectionRegion=null; view.first=null; calibrating=false;
+                reset("Ansicht geändert. Bitte neu kalibrieren."); openCamera();
+            }
+        });
+        status=label("",17); status.setMinLines(2); root.addView(status);
         LinearLayout controls=new LinearLayout(this); root.addView(controls);
         start=button("Start",controls,()->startSession()); pause=button("Pause",controls,()->togglePause()); stop=button("Stopp",controls,()->stopSession("Beendet"));
-        result=label("Noch keine Messdaten",16); root.addView(result);
+        result=label("Noch keine Messdaten",16); result.setMinLines(7); root.addView(result);
         root.addView(label("Einstellungen · Änderungen setzen Messwerte zurück",16));
         selector(root,new String[]{"Demo – simulierte Daten","Kamera – Live-Erkennung"},i->switchMode(i==1));
         selector(root,new String[]{"Kreis","Linie · hin und zurück","Acht"},i->{ shape=Shape.values()[i]; view.shape=shape; reset("Bahn geändert"); });
@@ -122,12 +131,17 @@ public final class MainActivity extends ComponentActivity {
         view.tap=p->{
             if(!calibrating) return;
             if(view.first==null) { view.first=p; setStatus("Jetzt die gegenüberliegende Ecke antippen"); }
-            else { try { Region r=Region.corners(view.first,p); view.region=r; detectionRegion=r; calibrating=false; view.first=null; reset("Bereich gesetzt. Bei Telefonbewegung neu kalibrieren."); }
-                catch(IllegalArgumentException e) { view.first=null; setStatus("Bereich zu klein. Bitte beide Ecken erneut antippen."); } }
+            else { try {
+                Region r=Region.corners(view.first,p);
+                Region source=camera?(mapping==null?null:mapping.sourceRegion(r)):r;
+                if(source==null) throw new IllegalArgumentException("Bildzuordnung fehlt");
+                view.region=r; detectionRegion=source; calibrating=false; view.first=null;
+                reset("Bereich fixiert. Telefon auf dem Stativ lassen."); }
+                catch(IllegalArgumentException e) { view.first=null; setStatus(e.getMessage()+". Bitte beide Ecken erneut antippen."); } }
             view.invalidate(); updateControls();
         };
         root.addView(label("Türkis: Bahn · Gelb: Taktpunkt · Weiß: beobachteter Punkt. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
-        root.addView(label("Selbst gewählte Darstellung, keine Bewegungsvorgabe. Nach jeder Bewegung des Telefons neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
+        root.addView(label("Fester Bildbereich für Stativbetrieb, keine AR-Verankerung. Bei bewegtem Telefon wandert die Wand hinter der Markierung: dann neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
         root.addView(label("Physio-Forschungsprototyp, nicht klinisch validiert. Nur mit professioneller Begleitung. Bei Schmerzen oder Schwindel stoppen. Laser niemals auf Augen, Menschen oder reflektierende Flächen richten.",14));
         root.addView(label("Erkennungsgrenzen: weiße überbelichtete Zentren, Sonne, Reflexionen und farbige Gegenstände können die Messung stören. Keine Gesundheits- oder Erholungsbewertung. Keine Speicherung von Bildern oder Sitzungen.",14));
         updateControls();
@@ -143,7 +157,7 @@ public final class MainActivity extends ComponentActivity {
         public void onProgressChanged(SeekBar s,int p,boolean user) { if(user)c.select(p); }
         public void onStartTrackingTouch(SeekBar s) {} public void onStopTrackingTouch(SeekBar s) {} }; }
     private Button button(String text,LinearLayout parent,Runnable action) { Button b=new Button(this); b.setText(text); b.setMinHeight(dp(56)); parent.addView(b,new LinearLayout.LayoutParams(0,-2,1)); b.setOnClickListener(v->action.run()); return b; }
-    private void setStatus(String s) { status.setText((camera?"Kamera · ":"Demo – simulierte Daten · ")+s); }
+    private void setStatus(String s) { String text=(camera?"Kamera · ":"Demo – simulierte Daten · ")+s; if(!text.contentEquals(status.getText()))status.setText(text); }
     private void updateControls() {
         start.setEnabled(!running && !calibrating && (!camera || cameraReady && view.region!=null));
         pause.setEnabled(running); stop.setEnabled(running); pause.setText(paused?"Weiter":"Pause");
@@ -171,6 +185,9 @@ public final class MainActivity extends ComponentActivity {
     }
     private void switchMode(boolean useCamera) {
         closeCamera(); camera=useCamera; view.demo=!camera; view.clearFrame(); view.first=null; calibrating=false;
+        previewView.setVisibility(camera?View.VISIBLE:View.GONE);
+        setRequestedOrientation(camera?ActivityInfo.SCREEN_ORIENTATION_LOCKED:ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        orientationRotation=getWindowManager().getDefaultDisplay().getRotation();
         if(camera) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
         permissionDenied=false;
@@ -186,6 +203,9 @@ public final class MainActivity extends ComponentActivity {
     }
     private void fail(String message) { closeCamera(); view.clearFrame(); view.region=null; detectionRegion=null; calibrating=false; stopSession(message); }
     private void openCamera() {
+        if(previewView.getWidth()==0 || previewView.getHeight()==0) {
+            previewView.post(()->{if(camera && foreground)openCamera();}); return;
+        }
         final long token=++generation;
         setStatus("Kamera startet …");
         var future=ProcessCameraProvider.getInstance(this);
@@ -194,13 +214,20 @@ public final class MainActivity extends ComponentActivity {
             try {
                 provider=future.get();
                 if(!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) { fail("Keine Rückkamera verfügbar. Bitte Demo wählen."); return; }
+                boundViewWidth=previewView.getWidth(); boundViewHeight=previewView.getHeight();
+                orientationRotation=getWindowManager().getDefaultDisplay().getRotation();
+                preview=new Preview.Builder().setTargetRotation(orientationRotation).build();
+                preview.setSurfaceProvider(previewView.getSurfaceProvider());
                 analysis=new ImageAnalysis.Builder().setResolutionSelector(new ResolutionSelector.Builder()
                     .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                     .setResolutionStrategy(new ResolutionStrategy(new Size(640,480),ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)).build())
                     .setTargetRotation(orientationRotation)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
                 analysis.setAnalyzer(worker,image->analyze(image,token));
-                var bound=provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,analysis);
+                ViewPort viewport=previewView.getViewPort();
+                if(viewport==null) { fail("Kameraansicht noch nicht bereit. Bitte erneut öffnen."); return; }
+                UseCaseGroup group=new UseCaseGroup.Builder().setViewPort(viewport).addUseCase(preview).addUseCase(analysis).build();
+                var bound=provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,group);
                 cameraState=bound.getCameraInfo().getCameraState();
                 cameraState.observe(this,state->{
                     if(token==generation && state.getError()!=null) fail("Kamerafehler. Demo wählen oder Kamera erneut öffnen.");
@@ -208,73 +235,94 @@ public final class MainActivity extends ComponentActivity {
                 // A bound camera is not ready until an actual analyzed frame arrives.
                 lastFrameTime=SystemClock.elapsedRealtime();
                 setStatus("Warte auf Kamerabild …");
-                main.postDelayed(()->{ if(token==generation && !cameraReady) fail("Kamerastart ohne Bild. Bitte Demo wählen oder Kamera neu öffnen."); },5000);
+                main.postDelayed(()->{ if(token==generation && frameRotation==-1) fail("Kamerastart ohne Bild. Bitte Demo wählen oder Kamera neu öffnen."); },5000);
             } catch(Exception e) { fail("Kamera konnte nicht gestartet werden. Bitte Demo wählen."); }
         },main::post);
     }
     @androidx.annotation.OptIn(markerClass=androidx.camera.core.ExperimentalGetImage.class)
     private void analyze(ImageProxy image,long token) {
-        Bitmap upright=null,raw=null;
         try {
             long now=SystemClock.elapsedRealtime();
             if(token!=generation || now-lastAccepted<100 || !deliveryPending.compareAndSet(false,true)) return;
             lastAccepted=now;
-            Rect crop=image.getCropRect(); ImageProxy.PlaneProxy[] planes=image.getPlanes();
-            Yuv.Plane y=new Yuv.Plane(planes[0].getBuffer(),planes[0].getRowStride(),planes[0].getPixelStride());
-            Yuv.Plane u=new Yuv.Plane(planes[1].getBuffer(),planes[1].getRowStride(),planes[1].getPixelStride());
-            Yuv.Plane v=new Yuv.Plane(planes[2].getBuffer(),planes[2].getRowStride(),planes[2].getPixelStride());
-            Yuv.Range range=Yuv.Range.FULL;
-            if(Build.VERSION.SDK_INT>=33 && image.getImage()!=null) {
-                int space=image.getImage().getDataSpace();
-                if(space==android.hardware.DataSpace.DATASPACE_BT601_625 ||
-                    space==android.hardware.DataSpace.DATASPACE_BT601_525 ||
-                    space==android.hardware.DataSpace.DATASPACE_BT709 ||
-                    space==android.hardware.DataSpace.DATASPACE_BT2020) range=Yuv.Range.LIMITED;
-            }
-            Yuv.Frame rgb=Yuv.bounded(y,u,v,crop.left,crop.top,crop.width(),crop.height(),640,range);
-            raw=Bitmap.createBitmap(rgb.pixels(),rgb.width(),rgb.height(),Bitmap.Config.ARGB_8888);
-            int rotation=image.getImageInfo().getRotationDegrees();
-            if(rotation!=0) { Matrix matrix=new Matrix(); matrix.postRotate(rotation); upright=Bitmap.createBitmap(raw,0,0,raw.getWidth(),raw.getHeight(),matrix,false); if(upright!=raw)raw.recycle(); } else upright=raw;
-            raw=null;
-            int w=upright.getWidth(),h=upright.getHeight();
-            int[] pixels=new int[w*h]; upright.getPixels(pixels,0,w,0,0,w,h);
             long config=configuration;
             Region roi=detectionRegion;
-            Detector.Result detected=roi==null?Detector.Result.missing():detector.detect(pixels,w,h,color,roi);
-            Bitmap frame=upright; upright=null;
+            Rect crop=image.getCropRect();
+            int w=crop.width(),h=crop.height();
+            int rotation=image.getImageInfo().getRotationDegrees();
+            ImageProxyTransformFactory factory=new ImageProxyTransformFactory();
+            factory.setUsingCropRect(true);
+            factory.setUsingRotationDegrees(false); // Detector reads the unrotated cropped buffer.
+            OutputTransform source=factory.getOutputTransform(image);
+            Detector.Result observation=Detector.Result.missing();
+            if(roi!=null) {
+                ImageProxy.PlaneProxy[] planes=image.getPlanes();
+                Yuv.Plane y=new Yuv.Plane(planes[0].getBuffer(),planes[0].getRowStride(),planes[0].getPixelStride());
+                Yuv.Plane u=new Yuv.Plane(planes[1].getBuffer(),planes[1].getRowStride(),planes[1].getPixelStride());
+                Yuv.Plane v=new Yuv.Plane(planes[2].getBuffer(),planes[2].getRowStride(),planes[2].getPixelStride());
+                Yuv.Range range=Yuv.Range.FULL;
+                if(Build.VERSION.SDK_INT>=33 && image.getImage()!=null) {
+                    int space=image.getImage().getDataSpace();
+                    if(space==android.hardware.DataSpace.DATASPACE_BT601_625 ||
+                        space==android.hardware.DataSpace.DATASPACE_BT601_525 ||
+                        space==android.hardware.DataSpace.DATASPACE_BT709 ||
+                        space==android.hardware.DataSpace.DATASPACE_BT2020) range=Yuv.Range.LIMITED;
+                }
+                Yuv.Frame rgb=Yuv.bounded(y,u,v,crop.left,crop.top,w,h,640,range);
+                observation=detector.detect(rgb.pixels(),rgb.width(),rgb.height(),color,roi);
+            }
+            Detector.Result detected=observation;
             main.post(()->{
                 try {
-                    if(token!=generation || !foreground || !camera) { frame.recycle(); return; }
+                    if(token!=generation || !foreground || !camera) return;
+                    OutputTransform target=previewView.getOutputTransform();
+                    if(target==null) { cameraReady=false; mapping=null; view.observation(null); updateControls(); return; }
+                    Matrix matrix=new Matrix();
+                    new CoordinateTransform(source,target).transform(matrix);
+                    float[] values=new float[9]; matrix.getValues(values);
+                    mapping=FrameMapping.pixelMatrix(values,w,h,previewView.getWidth(),previewView.getHeight());
                     boolean firstFrame=frameRotation==-1;
                     boolean changed=w!=frameWidth || h!=frameHeight || rotation!=frameRotation;
                     frameWidth=w; frameHeight=h; frameRotation=rotation;
                     if(changed) { view.region=null; detectionRegion=null; view.first=null; calibrating=false; reset(firstFrame?"Kamerabild bereit. Wandbereich kalibrieren.":"Bildgeometrie geändert. Bitte neu kalibrieren."); }
+                    if(view.region!=null) detectionRegion=mapping.sourceRegion(view.region);
                     long delivered=SystemClock.elapsedRealtime();
                     lastFrameTime=now; cameraReady=delivered-now<=350;
-                    view.frame(frame); updateControls();
-                    if(!changed && config==configuration && cameraReady) accept(detected,now);
+                    updateControls();
+                    if(!changed && config==configuration && cameraReady) {
+                        Detector.Result mapped=detected;
+                        if(detected.state()==Detector.State.DETECTED) {
+                            Point point=mapping.toPreview(detected.point());
+                            mapped=view.region!=null && view.region.contains(point.x(),point.y())?
+                                new Detector.Result(Detector.State.DETECTED,point):Detector.Result.missing();
+                        }
+                        accept(mapped,now);
+                    }
                     else {
                         view.observation(null);
                         if(running && !paused) { metrics.observe(delivered/1000.0,false,Double.NaN); renderMetrics(); }
                         if(!cameraReady) setStatus("Bildverarbeitung zu langsam – Ziel wartet");
                     }
+                } catch(IllegalArgumentException | IllegalStateException e) {
+                    mapping=null; cameraReady=false; view.region=null; detectionRegion=null; calibrating=false;
+                    stopSession("Bildzuordnung geändert. Bitte neu kalibrieren.");
                 } finally { deliveryPending.set(false); }
             });
         } catch(Exception e) {
-            if(raw!=null && !raw.isRecycled()) raw.recycle();
-            if(upright!=null) upright.recycle(); deliveryPending.set(false);
+            deliveryPending.set(false);
             main.post(()->{ if(token==generation) fail("Bildverarbeitung fehlgeschlagen. Kamera neu öffnen oder Demo wählen."); });
         } finally { image.close(); }
     }
     private void closeCamera() {
         generation++; cameraReady=false; frameWidth=frameHeight=0; frameRotation=-1;
+        mapping=null; preview=null;
         if(cameraState!=null) { cameraState.removeObservers(this); cameraState=null; }
         if(analysis!=null) { analysis.clearAnalyzer(); analysis=null; }
         if(provider!=null) { provider.unbindAll(); provider=null; }
     }
-    @Override protected void onStart() { super.onStart(); foreground=true; orientationListener.enable(); main.post(ticker); if(camera)ensurePermission(); }
+    @Override protected void onStart() { super.onStart(); foreground=true; main.post(ticker); if(camera)ensurePermission(); }
     @Override protected void onStop() {
-        foreground=false; orientationListener.disable(); main.removeCallbacks(ticker); closeCamera();
+        foreground=false; main.removeCallbacks(ticker); closeCamera();
         if(camera) { detectionRegion=null; view.region=null; view.first=null; calibrating=false; view.clearFrame(); }
         stopSession("Unterbrochen; bewusst neu starten" ); super.onStop();
     }

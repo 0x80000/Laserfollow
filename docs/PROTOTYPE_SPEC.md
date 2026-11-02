@@ -15,6 +15,8 @@ im Smartphone-Kamerabild eingeblendet. Kein Projektor und keine Wandvorlage nöt
 - Bahnabstand und Taktpunktabstand getrennt, Erkennungsabdeckung und erfasste Dauer.
 - Keine klinische Gesamtnote, keine Winkel-/Zentimeterangaben, keine Therapieempfehlung.
 - Lokale Bildverarbeitung; keine Bild- oder Sitzungsspeicherung und kein Netzwerkzugriff.
+- Ab Version 0.2: native Vorschau getrennt von der langsameren Punkterkennung;
+  fester Bildbereich für Stativbetrieb. Keine AR-Verankerung an der Wand.
 
 ## Technische Abnahme
 

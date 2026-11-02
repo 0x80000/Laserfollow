@@ -2,6 +2,31 @@
 
 Stand: 2. November 2026.
 
+## Version 0.2: Rückmeldung aus dem ersten Gerätetest
+
+Der Nutzer meldete eine ruckelige Kameraansicht und einen nicht an der Wand
+verankerten Bereich. Die alte Bitmap-Vorschau war auf etwa zehn Bilder/s begrenzt.
+Version 0.2 verwendet eine native CameraX PreviewView und separate ImageAnalysis
+im selben Viewport. Die Analyse bleibt bei etwa zehn Auswertungen/s, begrenzt aber
+nicht mehr die Vorschau. Bitmap-Erzeugung und -Rotation entfallen aus dem Analyzer.
+Kalibrierung und Detektion nutzen die offizielle CameraX-Koordinatentransformation.
+
+Die Bildschirmorientierung wird im Kameramodus gesperrt; sensorbedingte Wechsel
+setzen den Bereich nicht mehr zurück. Der Bereich ist bildfest, nicht weltfest:
+bei Bewegung des Telefons bleibt Stativbetrieb oder erneute Kalibrierung nötig.
+Eine robuste AR-Verankerung an einer strukturarmen Wand gehört nicht zu diesem Fix.
+
+Neue Kern-Regressionstests prüfen Skalierung, alle Vierteldrehungen, Crop-Zuordnung,
+Rücktransformation der Kalibrierung sowie fehlerhafte/singuläre Bildmatrizen.
+35 Kerntests bestehen ohne Fehler. Claude Code hat Version 0.2 unabhängig unter
+Herdr gelesen und keine Fehler in der Koordinatenzuordnung gefunden. Seine zwei
+kleinen Befunde wurden korrigiert: Der Start-Watchdog prüft ausschließlich, ob
+überhaupt ein erstes Bild vorlag; Kalibrierungsfehler zeigen ihre konkrete Ursache.
+Diese beiden anschließenden Korrekturen wurden durch Build und Lint geprüft,
+jedoch nicht nochmals durch Claude gelesen.
+Vorschau-Bildrate und exakte Überlagerung müssen nach Installation von 0.2 erneut
+am echten Gerät geprüft werden; eine konkrete Bildrate wird nicht garantiert.
+
 ## Entwicklungsablauf
 
 Codex erstellte den ersten Code in einer isolierten Umgebung unter Herdr.
@@ -22,7 +47,8 @@ die ursprünglichen Quellen, ohne Dateien zu ändern oder Tests vorzutäuschen.
 - Verzerrter Kreis und richtungsabhängige Normierung: Seitenverhältnis berücksichtigt.
 - Lange Ausfälle und verspätete Frames: Abdeckung senken, Zeit nicht zurücksetzen.
 - Einzelbild-Ergebnis: mindestens fünf gültige Beobachtungen und 0,5 s erforderlich.
-- 180-Grad-Drehung: Orientierungslistener aktualisiert CameraX und verwirft Kalibrierung.
+- In 0.1: Orientierungslistener aktualisierte CameraX bei Drehung. In 0.2 durch
+  gesperrte Kameraorientierung und Rücksetzen bei tatsächlicher Bildgeometrieänderung ersetzt.
 - Task-Vorschaubilder: Kameramodus setzt FLAG_SECURE.
 - Kamera-Observer: beim Schließen abmelden. Berechtigungsablehnung merken statt
   beim Wiederauftauchen automatisch nochmals zu fragen.
@@ -34,9 +60,10 @@ die ursprünglichen Quellen, ohne Dateien zu ändern oder Tests vorzutäuschen.
 ## Automatisierte Prüfungen
 
 `assembleDebug`, `lintDebug` und `core:test` sind erfolgreich abgeschlossen.
-26 Kerntests bestehen, ohne Fehler. Lint meldet keine Fehler und 18 Warnungen,
+Version 0.2: 35 Kerntests, keine Testfehler; Lint: 0 Fehler und 17 Warnungen.
+In Version 0.1 bestanden 26 Kerntests ohne Fehler. Lint meldete keine Fehler und 18 Warnungen,
 unter anderem zu neueren Bibliotheksversionen, Ressourcenpflege und UI-Allokationen.
-Die Debug-APK wurde gebaut. Es gab noch keinen Emulator- oder echten Gerätelauf.
+Die Debug-APK wurde gebaut. Der erste Gerätetest durch den Nutzer ist oben dokumentiert.
 Der Review allein ersetzt weder diese Prüfungen noch die folgende Geräteliste.
 
 ## Noch nicht geprüft: echtes Android-Gerät und realer Laser

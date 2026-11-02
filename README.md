@@ -26,8 +26,10 @@ nicht für einen klinischen Einsatz oder die Veröffentlichung im Play Store.
    bewegten Taktpunkt und Weiß den erkannten Punkt mit kurzer Spur.
 5. Pause/Weiter und Stopp bedienen die Sitzung. Bei verlorenem oder mehrdeutigem
    Punkt wartet der Taktpunkt. Einstellungen setzen die Messung zurück.
-6. Nach jeder Telefonbewegung neu kalibrieren. Drehen und Hintergrundwechsel
-   unterbrechen die Übung; kein automatisches Fortsetzen.
+6. Der Bereich ist **fest im Kamerabild**, nicht per AR an der Wand verankert.
+   Telefon auf dem Stativ lassen; nach Bewegung neu kalibrieren. Im Kameramodus
+   bleibt die Bildschirmausrichtung gesperrt. Hintergrundwechsel und Änderungen
+   der Fenstergröße unterbrechen die Übung; kein automatisches Fortsetzen.
 
 ## Was die Zahlen bedeuten
 
@@ -55,9 +57,14 @@ Reflexionen, weiße überbelichtete Zentren, Belichtungsautomatik und Bewegung d
 Telefons können Ergebnisse verfälschen. Mehrere ähnlich helle Kandidaten werden
 als mehrdeutig behandelt, statt einen erfundenen Mittelpunkt zu bilden.
 
-Die Kamera verarbeitet höchstens etwa zehn Bilder pro Sekunde. Anzeige und
-Erkennung verwenden dasselbe aufrechte Bild, begrenzt auf höchstens 640 Pixel
-an der längeren Seite. Ein kreisförmiges Ziel bleibt auch im rechteckigen Bild rund.
+Die native CameraX-Vorschau läuft unabhängig von der auf etwa zehn Auswertungen
+pro Sekunde begrenzten Punkterkennung. Sie ist nicht mehr auf zehn angezeigte
+Bilder begrenzt; die tatsächliche Vorschau-Bildrate hängt von Gerät und Licht ab.
+Analyse und Vorschau teilen sich einen CameraX-Viewport. Die offiziellen
+CameraX-Transformationen ordnen Kalibrierung und Punkte zwischen dem zugeschnittenen,
+unrotierten Analysebild und der Vorschau zu. Die CPU-Bildanalyse ist auf höchstens
+640 Pixel an der längeren Seite begrenzt; es werden keine Vorschau-Bitmaps erzeugt
+oder auf der CPU gedreht. Ein kreisförmiges Ziel bleibt auch im rechteckigen Bild rund.
 Die YUV-Konvertierung berücksichtigt Crop, Zeilen-/Pixelstride und Bufferposition.
 Sie nutzt BT.601-Koeffizienten mit vollem Wertebereich als Fallback und erkennt
 bekannte begrenzte SDR-Datenspaces ab Android 13. Das ist keine photometrische
@@ -90,4 +97,5 @@ Prüfstand und offene Geräteprüfungen: [VALIDATION.md](docs/VALIDATION.md).
 ## Quellen
 
 - [CameraX Image analysis](https://developer.android.com/media/camera/camerax/analyze)
+- [CameraX Koordinatentransformation](https://developer.android.com/media/camera/camerax/transform-output)
 - [FDA: Illuminating Facts About Laser Pointers](https://www.fda.gov/radiation-emitting-products/alerts-and-notices/illuminating-facts-about-laser-pointers)
