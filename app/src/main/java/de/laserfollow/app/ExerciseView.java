@@ -20,7 +20,9 @@ final class ExerciseView extends View {
     private double cachedSize=-1;
     private int cachedWidth=-1,cachedHeight=-1;
     private boolean cachedDemo;
-    final ArrayDeque<Point> trail=new ArrayDeque<>();
+    private record Sample(Point point,boolean start) {}
+    final ArrayDeque<Sample> trail=new ArrayDeque<>();
+    private boolean gap=true;
     Region region=new Region(.12,.12,.88,.88);
     Shape shape=Shape.CIRCLE;
     double size=.7,phase;
@@ -28,9 +30,9 @@ final class ExerciseView extends View {
     boolean demo=true;
     Tap tap;
     ExerciseView(Context c) { super(c); setMinimumHeight(260); setContentDescription("Kamerabild mit Übungsbahn; zum Kalibrieren zwei gegenüberliegende Ecken antippen"); }
-    void clearFrame() { spot=null; trail.clear(); invalidate(); }
+    void clearFrame() { spot=null; trail.clear(); gap=true; invalidate(); }
     double imageAspect() { return demo?4.0/3.0:getWidth()/(double)Math.max(1,getHeight()); }
-    void observation(Point p) { spot=p; if(p==null) trail.clear(); else { trail.add(p); while(trail.size()>16) trail.remove(); } invalidate(); }
+    void observation(Point p) { spot=p; if(p==null) gap=true; else { trail.add(new Sample(p,gap)); gap=false; while(trail.size()>3000) trail.remove(); } invalidate(); }
     private float px(double x) { return image.left+(float)x*image.width(); }
     private float py(double y) { return image.top+(float)y*image.height(); }
     @Override protected void onDraw(Canvas c) {
@@ -57,8 +59,16 @@ final class ExerciseView extends View {
             paint.setColor(0xff68e0c5); paint.setStrokeWidth(4); c.drawPath(path,paint);
             Point target=Geometry.point(shape,phase,region,size,imageAspect()); paint.setStyle(Paint.Style.FILL); paint.setColor(0xffffd381); c.drawCircle(px(target.x()),py(target.y()),10,paint);
         }
-        paint.setStyle(Paint.Style.FILL); paint.setColor(0x9987c9ff);
-        for(Point p:trail) c.drawCircle(px(p.x()),py(p.y()),4,paint);
+        paint.setStyle(Paint.Style.STROKE); paint.setColor(0xff84bfff);
+        paint.setStrokeWidth(2.5f*getResources().getDisplayMetrics().density);
+        Point previous=null;
+        for(Sample sample:trail) {
+            Point p=sample.point();
+            if(previous!=null && !sample.start()) c.drawLine(px(previous.x()),py(previous.y()),px(p.x()),py(p.y()),paint);
+            else c.drawPoint(px(p.x()),py(p.y()),paint);
+            previous=p;
+        }
+        paint.setStyle(Paint.Style.FILL);
         if(spot!=null) { paint.setColor(Color.WHITE); c.drawCircle(px(spot.x()),py(spot.y()),7,paint); }
         if(first!=null) { paint.setColor(0xffffd381); c.drawCircle(px(first.x()),py(first.y()),8,paint); }
         paint.setColor(Color.WHITE); paint.setTextSize(30*getResources().getDisplayMetrics().scaledDensity/2);

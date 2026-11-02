@@ -81,11 +81,11 @@ public final class MainActivity extends ComponentActivity {
         super.onCreate(state);
         permission=registerForActivityResult(new ActivityResultContracts.RequestPermission(),granted->{
             permissionPending=false; permissionDenied=!granted;
-            if(camera && foreground) { if(granted) openCamera(); else fail("Kamerazugriff abgelehnt. Demo ist weiterhin verfügbar."); }
+            if(camera && foreground) { if(granted) openCamera(); else fail("Kamerazugriff fehlt. In Android-Einstellungen erlauben und Kamera neu öffnen."); }
         });
         orientationRotation=getWindowManager().getDefaultDisplay().getRotation();
         buildUi();
-        setStatus("Bereit · Start beginnt die Simulation");
+        switchMode(true);
     }
     private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
     private android.graphics.drawable.GradientDrawable panel(int color,int radius) {
@@ -111,18 +111,16 @@ public final class MainActivity extends ComponentActivity {
     }
     private TextView label(String text,int sp) { TextView t=new TextView(this); t.setText(text); t.setTextColor(0xffe4edf9); t.setTextSize(sp); t.setPadding(0,dp(6),0,dp(6)); return t; }
     private void buildUi() {
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xff0b151e);
-        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20),dp(20),dp(20),dp(28)); scroll.addView(root); setContentView(scroll);
+        LinearLayout screen=new LinearLayout(this); screen.setOrientation(LinearLayout.VERTICAL); screen.setBackgroundColor(0xff0b151e);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(12),dp(4),dp(12),dp(8)); screen.addView(root); setContentView(screen);
         // Keep controls inside system bars, including Android 15 edge-to-edge enforcement.
-        scroll.setOnApplyWindowInsetsListener((v,insets)->{ v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom()); return insets; });
-        TextView brand=label("LASERFOLLOW  /  BEWEGUNG IM BLICK",11); brand.setLetterSpacing(.13f); brand.setTextColor(0xff8fa9b8); root.addView(brand);
-        TextView title=label("Dein Fokus.\nDeine Bewegung.",32); title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)); title.setLineSpacing(0,1.05f); root.addView(title);
-        badge=label("Demo – simulierte Daten",17); badge.setTextColor(0xff68e0c5); badge.setTextSize(13); root.addView(badge);
-        root.addView(label("Folge der Bahn in deinem Tempo. Stelle das Telefon für die Kameraübung fest vor dir auf.",14));
-        LinearLayout session=card(root,"Übungsfläche","Türkis · Bahn     Gelb · Ziel     Weiß · dein Punkt");
+        screen.setOnApplyWindowInsetsListener((v,insets)->{ v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom()); return insets; });
+        badge=label("Laserfollow · Live-Kamera",18); root.addView(badge);
+        LinearLayout session=root;
         FrameLayout cameraLayer=new FrameLayout(this);
         cameraLayer.setBackground(panel(0xff0c1923,20)); cameraLayer.setClipToOutline(true);
-        session.addView(cameraLayer,new LinearLayout.LayoutParams(-1,dp(320)));
+        int cameraHeight=Math.max(80,Math.min(320,getResources().getConfiguration().screenHeightDp-300));
+        session.addView(cameraLayer,new LinearLayout.LayoutParams(-1,dp(cameraHeight)));
         previewView=new PreviewView(this);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
@@ -139,14 +137,17 @@ public final class MainActivity extends ComponentActivity {
         status=label("",14); status.setMinLines(2); status.setTextColor(0xffb8cbd5); session.addView(status);
         LinearLayout controls=new LinearLayout(this); session.addView(controls);
         start=button("Start",controls,()->startSession()); pause=button("Pause",controls,()->togglePause()); stop=button("Stopp",controls,()->stopSession("Beendet"));
-        LinearLayout results=card(root,"Dein Verlauf","Bildbasierte Messwerte · keine medizinische Bewertung");
+        LinearLayout quick=new LinearLayout(this); session.addView(quick);
+        calibrate=button("Bereich festlegen",quick,()->{});
+        button("Kamera neu öffnen",quick,()->{ closeCamera(); view.clearFrame(); view.region=null; detectionRegion=null; reset("Kamera wird vorbereitet"); permissionDenied=false; ensurePermission(); });
+        ScrollView detailsScroll=new ScrollView(this); screen.addView(detailsScroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout details=new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setPadding(dp(12),0,dp(12),dp(16)); detailsScroll.addView(details);
+        LinearLayout results=card(details,"Dein Verlauf","Bildbasierte Messwerte · keine medizinische Bewertung");
         result=label("Starte eine Übung, um deinen Verlauf zu sehen.",15); result.setMinLines(6); result.setLineSpacing(dp(4),1); results.addView(result);
-        LinearLayout settings=card(root,"Übung gestalten","Änderungen starten die Messung neu.");
-        settings.addView(label("01  QUELLE",11));
-        selector(settings,new String[]{"Demo – simulierte Daten","Kamera – Live-Erkennung"},i->switchMode(i==1));
-        settings.addView(label("02  FORM",11));
+        LinearLayout settings=card(details,"Übung gestalten","Änderungen starten die Messung neu.");
+        settings.addView(label("FORM",11));
         selector(settings,new String[]{"Kreis","Linie · hin und zurück","Acht"},i->{ shape=Shape.values()[i]; view.shape=shape; reset("Bahn geändert"); });
-        settings.addView(label("03  LASERFARBE",11));
+        settings.addView(label("LASERFARBE",11));
         selector(settings,new String[]{"Roter Punkt","Grüner Punkt"},i->{ color=i==0?Detector.Color.RED:Detector.Color.GREEN; reset("Farbe geändert"); });
         TextView sizeLabel=label("Bahngröße: 70 % des Bereichs",14); settings.addView(sizeLabel);
         SeekBar sizeBar=new SeekBar(this); sizeBar.setMax(65); sizeBar.setProgress(45); settings.addView(sizeBar);
@@ -154,7 +155,6 @@ public final class MainActivity extends ComponentActivity {
         TextView periodLabel=label("Umlaufzeit: 12 s · frei wählbar",14); settings.addView(periodLabel);
         SeekBar periodBar=new SeekBar(this); periodBar.setMax(26); periodBar.setProgress(8); settings.addView(periodBar);
         periodBar.setOnSeekBarChangeListener(seek(v->{ period=v+4; periodLabel.setText("Umlaufzeit: "+(v+4)+" s · frei wählbar"); reset("Umlaufzeit geändert"); }));
-        calibrate=new Button(this); calibrate.setText("Bereich festlegen"); styleButton(calibrate,false); settings.addView(calibrate);
         calibrate.setOnClickListener(v->{ if(camera && !cameraReady) { setStatus("Zuerst ein Kamerabild abwarten"); return; } reset("Zwei gegenüberliegende Ecken im Bild antippen"); calibrating=true; view.first=null; view.region=null; detectionRegion=null; updateControls(); });
         view.tap=p->{
             if(!calibrating) return;
@@ -168,8 +168,8 @@ public final class MainActivity extends ComponentActivity {
                 catch(IllegalArgumentException e) { view.first=null; setStatus(e.getMessage()+". Bitte beide Ecken erneut antippen."); } }
             view.invalidate(); updateControls();
         };
-        LinearLayout info=card(root,"Gut vorbereitet","Bitte vor der ersten Kameraübung lesen.");
-        info.addView(label("Türkis: Bahn · Gelb: Taktpunkt · Weiß: beobachteter Punkt. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
+        LinearLayout info=card(details,"Gut vorbereitet","Bitte vor der ersten Kameraübung lesen.");
+        info.addView(label("Türkis: Bahn · Gelb: Ziel · Weiß: aktueller Punkt · Blau: Bewegungsspur der letzten 3.000 Beobachtungen. Pause und Stopp behalten die Spur. Start und neue Einstellungen löschen sie. Erkennungslücken werden nicht verbunden. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
         info.addView(label("Fester Bildbereich für Stativbetrieb, keine AR-Verankerung. Bei bewegtem Telefon wandert die Wand hinter der Markierung: dann neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
         info.addView(label("Physio-Forschungsprototyp, nicht klinisch validiert. Nur mit professioneller Begleitung. Bei Schmerzen oder Schwindel stoppen. Laser niemals auf Augen, Menschen oder reflektierende Flächen richten.",14));
         info.addView(label("Erkennungsgrenzen: weiße überbelichtete Zentren, Sonne, Reflexionen und farbige Gegenstände können die Messung stören. Keine Gesundheits- oder Erholungsbewertung. Keine Speicherung von Bildern oder Sitzungen.",14));
@@ -198,8 +198,8 @@ public final class MainActivity extends ComponentActivity {
         if(!metrics.sufficientData()) result.setText(prefix+"\nUnzureichende Daten · mindestens 0,5 s gültig erfassen");
         else result.setText(String.format(Locale.GERMAN,"%s\nNächster Bahnabstand: %.2f %%\nAbstand zum Taktpunkt: %.2f %%\nJeweils Mittelwert in %% der Bereichsdiagonale\nErfasst: %.1f s · Erkennungsabdeckung: %.1f %%",prefix,metrics.meanErrorPercent(),metrics.meanTargetErrorPercent(),metrics.trackedSeconds(),metrics.coveragePercent()));
     }
-    private void reset(String message) { configuration++; running=false; paused=false; phase=0; metrics.reset(); view.phase=0; view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
-    private void startSession() { if(camera && (!cameraReady || view.region==null) || calibrating) return; configuration++; metrics.reset(); phase=0; running=true; paused=false; view.phase=0; view.observation(null); setStatus("Läuft · Punkt suchen"); renderMetrics(); updateControls(); }
+    private void reset(String message) { configuration++; running=false; paused=false; phase=0; view.clearFrame(); metrics.reset(); view.phase=0; view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
+    private void startSession() { if(camera && (!cameraReady || view.region==null) || calibrating) return; configuration++; view.clearFrame(); metrics.reset(); phase=0; running=true; paused=false; view.phase=0; view.observation(null); setStatus("Läuft · Punkt suchen"); renderMetrics(); updateControls(); }
     private void togglePause() { if(!running)return; configuration++; paused=!paused; metrics.breakContinuity(); view.observation(null); setStatus(paused?"Pausiert":"Fortgesetzt · Punkt suchen"); updateControls(); }
     private void stopSession(String message) { configuration++; running=false; paused=false; metrics.breakContinuity(); view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
     private void accept(Detector.Result observation,long now) {
@@ -228,7 +228,7 @@ public final class MainActivity extends ComponentActivity {
     private void ensurePermission() {
         if(permissionPending) return;
         if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED) openCamera();
-        else if(permissionDenied) fail("Kamerazugriff abgelehnt. Demo ist weiterhin verfügbar.");
+        else if(permissionDenied) fail("Kamerazugriff fehlt. In Android-Einstellungen erlauben und Kamera neu öffnen.");
         else { permissionPending=true; permission.launch(Manifest.permission.CAMERA); }
     }
     private void fail(String message) { closeCamera(); view.clearFrame(); view.region=null; detectionRegion=null; calibrating=false; stopSession(message); }
@@ -243,7 +243,7 @@ public final class MainActivity extends ComponentActivity {
             if(token!=generation || !foreground || !camera)return;
             try {
                 provider=future.get();
-                if(!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) { fail("Keine Rückkamera verfügbar. Bitte Demo wählen."); return; }
+                if(!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) { fail("Keine Rückkamera verfügbar. Bitte Kamera neu öffnen."); return; }
                 boundViewWidth=previewView.getWidth(); boundViewHeight=previewView.getHeight();
                 orientationRotation=getWindowManager().getDefaultDisplay().getRotation();
                 preview=new Preview.Builder().setTargetRotation(orientationRotation).build();
@@ -260,13 +260,13 @@ public final class MainActivity extends ComponentActivity {
                 var bound=provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,group);
                 cameraState=bound.getCameraInfo().getCameraState();
                 cameraState.observe(this,state->{
-                    if(token==generation && state.getError()!=null) fail("Kamerafehler. Demo wählen oder Kamera erneut öffnen.");
+                    if(token==generation && state.getError()!=null) fail("Kamerafehler. Kamera erneut öffnen.");
                 });
                 // A bound camera is not ready until an actual analyzed frame arrives.
                 lastFrameTime=SystemClock.elapsedRealtime();
                 setStatus("Warte auf Kamerabild …");
-                main.postDelayed(()->{ if(token==generation && frameRotation==-1) fail("Kamerastart ohne Bild. Bitte Demo wählen oder Kamera neu öffnen."); },5000);
-            } catch(Exception e) { fail("Kamera konnte nicht gestartet werden. Bitte Demo wählen."); }
+                main.postDelayed(()->{ if(token==generation && frameRotation==-1) fail("Kamerastart ohne Bild. Bitte Kamera neu öffnen."); },5000);
+            } catch(Exception e) { fail("Kamera konnte nicht gestartet werden. Bitte Kamera neu öffnen."); }
         },main::post);
     }
     @androidx.annotation.OptIn(markerClass=androidx.camera.core.ExperimentalGetImage.class)
@@ -340,7 +340,7 @@ public final class MainActivity extends ComponentActivity {
             });
         } catch(Exception e) {
             deliveryPending.set(false);
-            main.post(()->{ if(token==generation) fail("Bildverarbeitung fehlgeschlagen. Kamera neu öffnen oder Demo wählen."); });
+            main.post(()->{ if(token==generation) fail("Bildverarbeitung fehlgeschlagen. Kamera neu öffnen."); });
         } finally { image.close(); }
     }
     private void closeCamera() {

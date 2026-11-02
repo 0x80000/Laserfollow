@@ -2,6 +2,15 @@
 
 Stand: 2. November 2026.
 
+## Version 0.4: Kamera und Bewegungsspur
+
+Direkter Kamerastart ohne Demo-Auswahl. Kamera und zentrale Bedienelemente
+einschließlich Kalibrierung stehen oberhalb des separat scrollbaren Detailbereichs.
+Die blaue Spur zeigt bis zu 3.000 gültige Beobachtungen der laufenden Übung,
+bleibt bei Pause/Stopp erhalten und wird bei Start, Neukalibrierung und Änderungen
+gelöscht. Fehlende Beobachtungen unterbrechen die Linie. Keine dauerhafte Speicherung.
+Geräteprüfung von Layout und realem Laser weiterhin ausstehend.
+
 ## Version 0.3: Oberfläche
 
 Dunkle Petrol-Palette, mintfarbene Akzente, abgerundete Karten, größere Übungsfläche
