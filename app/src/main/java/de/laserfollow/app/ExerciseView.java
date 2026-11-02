@@ -36,9 +36,13 @@ final class ExerciseView extends View {
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);
         if(demo) {
-            c.drawColor(Color.rgb(17,30,49));
+            c.drawColor(Color.rgb(12,25,35));
             float w=Math.min(getWidth(),getHeight()*4f/3),h=w*3/4;
             image.set((getWidth()-w)/2,(getHeight()-h)/2,(getWidth()+w)/2,(getHeight()+h)/2);
+            paint.setColor(0xff20333f); paint.setStrokeWidth(1);
+            float grid=32*getResources().getDisplayMetrics().density;
+            for(float x=0;x<getWidth();x+=grid)c.drawLine(x,0,x,getHeight(),paint);
+            for(float y=0;y<getHeight();y+=grid)c.drawLine(0,y,getWidth(),y,paint);
         } else image.set(0,0,getWidth(),getHeight());
         paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2); paint.setColor(0xff8a9bb4);
         if(region!=null) {
@@ -50,7 +54,7 @@ final class ExerciseView extends View {
                 cachedRegion=region; cachedShape=shape; cachedSize=size;
                 cachedWidth=getWidth(); cachedHeight=getHeight(); cachedDemo=demo;
             }
-            paint.setColor(0xff54d6c7); paint.setStrokeWidth(4); c.drawPath(path,paint);
+            paint.setColor(0xff68e0c5); paint.setStrokeWidth(4); c.drawPath(path,paint);
             Point target=Geometry.point(shape,phase,region,size,imageAspect()); paint.setStyle(Paint.Style.FILL); paint.setColor(0xffffd381); c.drawCircle(px(target.x()),py(target.y()),10,paint);
         }
         paint.setStyle(Paint.Style.FILL); paint.setColor(0x9987c9ff);

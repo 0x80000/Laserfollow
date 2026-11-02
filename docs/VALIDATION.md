@@ -2,6 +2,15 @@
 
 Stand: 2. November 2026.
 
+## Version 0.3: Oberfläche
+
+Dunkle Petrol-Palette, mintfarbene Akzente, abgerundete Karten, größere Übungsfläche
+und getrennte Bereiche für Steuerung, Verlauf und Einstellungen. Deaktivierte
+Schaltflächen haben eigene Farben. Demo bleibt ausdrücklich als Simulation markiert.
+Kamera- und Messlogik sind unverändert. Build, Lint und die 35 Kerntests wurden
+erneut geprüft. Eine visuelle Geräteprüfung ist noch offen; lokal ist kein
+Android-Gerät oder Emulator verbunden. Der reale Lasertest folgt durch den Nutzer.
+
 ## Version 0.2: Rückmeldung aus dem ersten Gerätetest
 
 Der Nutzer meldete eine ruckelige Kameraansicht und einen nicht an der Wand

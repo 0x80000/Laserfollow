@@ -88,17 +88,41 @@ public final class MainActivity extends ComponentActivity {
         setStatus("Bereit · Start beginnt die Simulation");
     }
     private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
+    private android.graphics.drawable.GradientDrawable panel(int color,int radius) {
+        android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
+        d.setColor(color); d.setCornerRadius(dp(radius)); return d;
+    }
+    private LinearLayout card(LinearLayout parent,String title,String subtitle) {
+        LinearLayout c=new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(18),dp(14),dp(18),dp(18)); c.setBackground(panel(0xff142330,24));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2); lp.topMargin=dp(16); parent.addView(c,lp);
+        TextView heading=label(title,20); heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)); c.addView(heading);
+        if(!subtitle.isEmpty()) { TextView hint=label(subtitle,13); hint.setTextColor(0xffa9bdc9); c.addView(hint); }
+        return c;
+    }
+    private void styleButton(Button b,boolean primary) {
+        b.setAllCaps(false); b.setTextSize(15); b.setMinHeight(dp(52)); b.setMinimumWidth(0);
+        b.setPadding(dp(8),dp(4),dp(8),dp(4)); b.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        int[][] states={new int[]{-android.R.attr.state_enabled},new int[]{}};
+        b.setTextColor(new android.content.res.ColorStateList(states,new int[]{0xff718691,primary?0xff082c29:0xffe4edf3}));
+        android.content.res.ColorStateList colors=new android.content.res.ColorStateList(states,new int[]{0xff20303c,primary?0xff68e0c5:0xff29414e});
+        b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337fffff),panel(primary?0xff68e0c5:0xff29414e,16),null));
+        b.setBackgroundTintList(colors);
+    }
     private TextView label(String text,int sp) { TextView t=new TextView(this); t.setText(text); t.setTextColor(0xffe4edf9); t.setTextSize(sp); t.setPadding(0,dp(6),0,dp(6)); return t; }
     private void buildUi() {
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xff0b1425);
-        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(18),dp(12),dp(18),dp(24)); scroll.addView(root); setContentView(scroll);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xff0b151e);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20),dp(20),dp(20),dp(28)); scroll.addView(root); setContentView(scroll);
         // Keep controls inside system bars, including Android 15 edge-to-edge enforcement.
         scroll.setOnApplyWindowInsetsListener((v,insets)->{ v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom()); return insets; });
-        root.addView(label("LASERFOLLOW",26));
-        badge=label("Demo – simulierte Daten",17); badge.setTextColor(0xff54d6c7); root.addView(badge);
-        root.addView(label("Ziele erscheinen nur auf dem Telefon. Still sitzen, Telefon fest aufstellen, Rückkamera zur matten Wand.",14));
+        TextView brand=label("LASERFOLLOW  /  BEWEGUNG IM BLICK",11); brand.setLetterSpacing(.13f); brand.setTextColor(0xff8fa9b8); root.addView(brand);
+        TextView title=label("Dein Fokus.\nDeine Bewegung.",32); title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)); title.setLineSpacing(0,1.05f); root.addView(title);
+        badge=label("Demo – simulierte Daten",17); badge.setTextColor(0xff68e0c5); badge.setTextSize(13); root.addView(badge);
+        root.addView(label("Folge der Bahn in deinem Tempo. Stelle das Telefon für die Kameraübung fest vor dir auf.",14));
+        LinearLayout session=card(root,"Übungsfläche","Türkis · Bahn     Gelb · Ziel     Weiß · dein Punkt");
         FrameLayout cameraLayer=new FrameLayout(this);
-        root.addView(cameraLayer,new LinearLayout.LayoutParams(-1,dp(290)));
+        cameraLayer.setBackground(panel(0xff0c1923,20)); cameraLayer.setClipToOutline(true);
+        session.addView(cameraLayer,new LinearLayout.LayoutParams(-1,dp(320)));
         previewView=new PreviewView(this);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
@@ -112,21 +136,25 @@ public final class MainActivity extends ComponentActivity {
                 reset("Ansicht geändert. Bitte neu kalibrieren."); openCamera();
             }
         });
-        status=label("",17); status.setMinLines(2); root.addView(status);
-        LinearLayout controls=new LinearLayout(this); root.addView(controls);
+        status=label("",14); status.setMinLines(2); status.setTextColor(0xffb8cbd5); session.addView(status);
+        LinearLayout controls=new LinearLayout(this); session.addView(controls);
         start=button("Start",controls,()->startSession()); pause=button("Pause",controls,()->togglePause()); stop=button("Stopp",controls,()->stopSession("Beendet"));
-        result=label("Noch keine Messdaten",16); result.setMinLines(7); root.addView(result);
-        root.addView(label("Einstellungen · Änderungen setzen Messwerte zurück",16));
-        selector(root,new String[]{"Demo – simulierte Daten","Kamera – Live-Erkennung"},i->switchMode(i==1));
-        selector(root,new String[]{"Kreis","Linie · hin und zurück","Acht"},i->{ shape=Shape.values()[i]; view.shape=shape; reset("Bahn geändert"); });
-        selector(root,new String[]{"Roter Punkt","Grüner Punkt"},i->{ color=i==0?Detector.Color.RED:Detector.Color.GREEN; reset("Farbe geändert"); });
-        TextView sizeLabel=label("Bahngröße: 70 % des Bereichs",14); root.addView(sizeLabel);
-        SeekBar sizeBar=new SeekBar(this); sizeBar.setMax(65); sizeBar.setProgress(45); root.addView(sizeBar);
+        LinearLayout results=card(root,"Dein Verlauf","Bildbasierte Messwerte · keine medizinische Bewertung");
+        result=label("Starte eine Übung, um deinen Verlauf zu sehen.",15); result.setMinLines(6); result.setLineSpacing(dp(4),1); results.addView(result);
+        LinearLayout settings=card(root,"Übung gestalten","Änderungen starten die Messung neu.");
+        settings.addView(label("01  QUELLE",11));
+        selector(settings,new String[]{"Demo – simulierte Daten","Kamera – Live-Erkennung"},i->switchMode(i==1));
+        settings.addView(label("02  FORM",11));
+        selector(settings,new String[]{"Kreis","Linie · hin und zurück","Acht"},i->{ shape=Shape.values()[i]; view.shape=shape; reset("Bahn geändert"); });
+        settings.addView(label("03  LASERFARBE",11));
+        selector(settings,new String[]{"Roter Punkt","Grüner Punkt"},i->{ color=i==0?Detector.Color.RED:Detector.Color.GREEN; reset("Farbe geändert"); });
+        TextView sizeLabel=label("Bahngröße: 70 % des Bereichs",14); settings.addView(sizeLabel);
+        SeekBar sizeBar=new SeekBar(this); sizeBar.setMax(65); sizeBar.setProgress(45); settings.addView(sizeBar);
         sizeBar.setOnSeekBarChangeListener(seek((v)->{ size=(25+v)/100.0; view.size=size; sizeLabel.setText("Bahngröße: "+(25+v)+" % des Bereichs"); reset("Bahngröße geändert"); }));
-        TextView periodLabel=label("Umlaufzeit: 12 s · frei wählbar",14); root.addView(periodLabel);
-        SeekBar periodBar=new SeekBar(this); periodBar.setMax(26); periodBar.setProgress(8); root.addView(periodBar);
+        TextView periodLabel=label("Umlaufzeit: 12 s · frei wählbar",14); settings.addView(periodLabel);
+        SeekBar periodBar=new SeekBar(this); periodBar.setMax(26); periodBar.setProgress(8); settings.addView(periodBar);
         periodBar.setOnSeekBarChangeListener(seek(v->{ period=v+4; periodLabel.setText("Umlaufzeit: "+(v+4)+" s · frei wählbar"); reset("Umlaufzeit geändert"); }));
-        calibrate=new Button(this); calibrate.setText("Wandbereich kalibrieren"); root.addView(calibrate);
+        calibrate=new Button(this); calibrate.setText("Bereich festlegen"); styleButton(calibrate,false); settings.addView(calibrate);
         calibrate.setOnClickListener(v->{ if(camera && !cameraReady) { setStatus("Zuerst ein Kamerabild abwarten"); return; } reset("Zwei gegenüberliegende Ecken im Bild antippen"); calibrating=true; view.first=null; view.region=null; detectionRegion=null; updateControls(); });
         view.tap=p->{
             if(!calibrating) return;
@@ -140,15 +168,17 @@ public final class MainActivity extends ComponentActivity {
                 catch(IllegalArgumentException e) { view.first=null; setStatus(e.getMessage()+". Bitte beide Ecken erneut antippen."); } }
             view.invalidate(); updateControls();
         };
-        root.addView(label("Türkis: Bahn · Gelb: Taktpunkt · Weiß: beobachteter Punkt. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
-        root.addView(label("Fester Bildbereich für Stativbetrieb, keine AR-Verankerung. Bei bewegtem Telefon wandert die Wand hinter der Markierung: dann neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
-        root.addView(label("Physio-Forschungsprototyp, nicht klinisch validiert. Nur mit professioneller Begleitung. Bei Schmerzen oder Schwindel stoppen. Laser niemals auf Augen, Menschen oder reflektierende Flächen richten.",14));
-        root.addView(label("Erkennungsgrenzen: weiße überbelichtete Zentren, Sonne, Reflexionen und farbige Gegenstände können die Messung stören. Keine Gesundheits- oder Erholungsbewertung. Keine Speicherung von Bildern oder Sitzungen.",14));
+        LinearLayout info=card(root,"Gut vorbereitet","Bitte vor der ersten Kameraübung lesen.");
+        info.addView(label("Türkis: Bahn · Gelb: Taktpunkt · Weiß: beobachteter Punkt. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
+        info.addView(label("Fester Bildbereich für Stativbetrieb, keine AR-Verankerung. Bei bewegtem Telefon wandert die Wand hinter der Markierung: dann neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
+        info.addView(label("Physio-Forschungsprototyp, nicht klinisch validiert. Nur mit professioneller Begleitung. Bei Schmerzen oder Schwindel stoppen. Laser niemals auf Augen, Menschen oder reflektierende Flächen richten.",14));
+        info.addView(label("Erkennungsgrenzen: weiße überbelichtete Zentren, Sonne, Reflexionen und farbige Gegenstände können die Messung stören. Keine Gesundheits- oder Erholungsbewertung. Keine Speicherung von Bildern oder Sitzungen.",14));
         updateControls();
     }
     private interface Choice { void select(int i); }
     private void selector(LinearLayout root,String[] entries,Choice choice) {
-        Spinner s=new Spinner(this); ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,entries); s.setAdapter(adapter); root.addView(s);
+        Spinner s=new Spinner(this); ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,entries); s.setAdapter(adapter); s.setMinimumHeight(dp(52)); s.setPadding(dp(12),0,dp(12),0); s.setBackground(panel(0xff223744,14));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52)); lp.bottomMargin=dp(12); root.addView(s,lp);
         s.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() { int previous=0;
             public void onItemSelected(AdapterView<?> p,View v,int i,long id) { if(i!=previous) { previous=i; choice.select(i); } }
             public void onNothingSelected(AdapterView<?> p) {} });
@@ -156,7 +186,7 @@ public final class MainActivity extends ComponentActivity {
     private SeekBar.OnSeekBarChangeListener seek(Choice c) { return new SeekBar.OnSeekBarChangeListener() {
         public void onProgressChanged(SeekBar s,int p,boolean user) { if(user)c.select(p); }
         public void onStartTrackingTouch(SeekBar s) {} public void onStopTrackingTouch(SeekBar s) {} }; }
-    private Button button(String text,LinearLayout parent,Runnable action) { Button b=new Button(this); b.setText(text); b.setMinHeight(dp(56)); parent.addView(b,new LinearLayout.LayoutParams(0,-2,1)); b.setOnClickListener(v->action.run()); return b; }
+    private Button button(String text,LinearLayout parent,Runnable action) { Button b=new Button(this); b.setText(text); styleButton(b,text.equals("Start")); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1); lp.setMargins(dp(3),dp(4),dp(3),dp(4)); parent.addView(b,lp); b.setOnClickListener(v->action.run()); return b; }
     private void setStatus(String s) { String text=(camera?"Kamera · ":"Demo – simulierte Daten · ")+s; if(!text.contentEquals(status.getText()))status.setText(text); }
     private void updateControls() {
         start.setEnabled(!running && !calibrating && (!camera || cameraReady && view.region!=null));
