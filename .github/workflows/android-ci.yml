@@ -19,7 +19,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Ensure Android platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Run core regression tests, Android lint and build debug APK
         run: ./gradlew --no-daemon :core:test :app:lintDebug :app:assembleDebug
       - name: Upload prototype test APK
