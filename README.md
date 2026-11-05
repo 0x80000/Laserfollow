@@ -22,10 +22,11 @@ nicht für einen klinischen Einsatz oder die Veröffentlichung im Play Store.
 3. Laserfarbe auswählen. **Wandbereich kalibrieren** antippen, dann im Bild zwei
    gegenüberliegende Ecken des Übungsbereichs wählen. Start ist erst nach einem
    frischen Kamerabild und gültiger Kalibrierung verfügbar.
-4. Bahn, Größe und Umlaufzeit selbst auswählen. Türkis zeigt die Bahn, Gelb den
-   bewegten Taktpunkt und Weiß den erkannten Punkt mit kurzer Spur.
-5. Pause/Weiter und Stopp bedienen die Sitzung. Bei verlorenem oder mehrdeutigem
-   Punkt wartet der Taktpunkt. Einstellungen setzen die Messung zurück.
+4. Bahn, Größe und Umlaufzeit selbst auswählen. Türkis zeigt die Bahn, der gelbe
+   Ring das kontinuierlich bewegte Ziel und Weiß den erkannten Punkt mit kurzer Spur.
+5. Pause/Weiter und Stopp bedienen die Sitzung. Der Zielring läuft auch bei
+   verlorenem oder mehrdeutigem Laserpunkt weiter; in dieser Zeit werden keine
+   gültigen Messwerte hinzugezählt. Einstellungen setzen die Messung zurück.
 6. Der Bereich ist **fest im Kamerabild**, nicht per AR an der Wand verankert.
    Telefon auf dem Stativ lassen; nach Bewegung neu kalibrieren. Im Kameramodus
    bleibt die Bildschirmausrichtung gesperrt. Hintergrundwechsel und Änderungen
@@ -50,8 +51,9 @@ nicht für einen klinischen Einsatz oder die Veröffentlichung im Play Store.
 
 ## Erkennungsgrenzen und Datenschutz
 
-Ein einfacher Farbschwellendetektor erkennt helle, farbdominante, kompakte
-Komponenten. Kleine farbige Gegenstände können trotzdem als Punkt erscheinen:
+Ein Farbschwellendetektor erkennt kleine, farbdominante Komponenten einschließlich
+schwächerer roter/grüner Halos um einen überbelichteten weißen Lichtkern. Ein rein
+weißer Punkt wird nicht als Laser akzeptiert. Kleine farbige Gegenstände können trotzdem als Punkt erscheinen:
 **die App kann nicht beweisen, dass Licht von einem Laser stammt.** Sonne,
 Reflexionen, weiße überbelichtete Zentren, Belichtungsautomatik und Bewegung des
 Telefons können Ergebnisse verfälschen. Mehrere ähnlich helle Kandidaten werden
