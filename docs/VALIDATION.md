@@ -1,5 +1,31 @@
 # Prüfstand des ersten Prototyps
 
+## Fehlerkorrektur vom 5. November 2026 – noch nicht am Testergerät bestätigt
+
+Nach Testerfeedback (blinkender Start-Button bei ca. 4 statt 9 Auswertungen/s,
+roter Laser mit weißem Zentrum zeitweise nicht erkannt) auf einem separaten
+Feature-Branch umgesetzt:
+
+- Startfreigabe nach einer gültigen Kamerabild-Zuordnung stabil halten,
+  statt sie von jedem einzelnen 350-ms-Latenzlimit abhängig zu machen.
+  Nach mehr als 2,5 s ohne verarbeitetes Kamerabild bleibt ein echter
+  Kameraausfall weiterhin erkennbar.
+- Die Zielbewegung folgt jetzt monotoner Zeit statt gültigen Messwerten und
+  läuft bei Erkennungslücken weiter; Pause/Weiter bleibt wirksam.
+- YUV-Konvertierung nur im kalibrierten Rechteck plus Randwächter; die
+  Ausgabe-Koordinaten bleiben auf das vollständige Kamerabild bezogen.
+- Färbige Laserränder und überbelichtete weiße Kerne zusammen bewerten.
+  Neutral weiße Lichtpunkte und mehrdeutige Kandidaten bleiben ausgeschlossen.
+- Gelber Punkt als offener Ring, damit das reale Laserbild sichtbar bleibt.
+- Sechs zusätzliche automatische Tests für Laserränder, Überbelichtung,
+  Mehrdeutigkeit und ROI-Verarbeitung.
+
+GitHub Actions: Java-Kerntests, Android-Lint und Debug-APK-Build erfolgreich.
+**Noch ausstehend:** Realgerätetest unter derselben Beleuchtung und Abgleich
+mit der vom Tester installierten APK. Die Screenshots zeigen zusätzliche
+FPS- und UI-Elemente, die nicht in den veröffentlichten Branch-Quellen stehen.
+Diese Fehlerkorrektur sollte deshalb erst nach Quellstandabgleich verteilt werden.
+
 Stand: 2. November 2026.
 
 ## Version 0.4: Kamera und Bewegungsspur
