@@ -59,6 +59,8 @@ public final class MainActivity extends ComponentActivity {
     private double phase,period=12,size=.7;
     private Shape shape=Shape.CIRCLE;
     private long lastFrameTime,lastAccepted,lastTargetTick;
+    private long performanceWindowStart,processingTimeSum;
+    private int completedFrames;
     private int frameWidth,frameHeight,frameRotation=-1;
     private ActivityResultLauncher<String> permission;
     /** The target follows elapsed time, even when no laser or camera frame is detected. */
@@ -159,6 +161,17 @@ public final class MainActivity extends ComponentActivity {
         LinearLayout quick=new LinearLayout(this); session.addView(quick);
         calibrate=button("Bereich festlegen",quick,()->{});
         button("Kamera neu öffnen",quick,()->{ closeCamera(); view.clearFrame(); view.region=null; detectionRegion=null; reset("Kamera wird vorbereitet"); permissionDenied=false; ensurePermission(); });
+        Switch showTarget=new Switch(this);
+        showTarget.setText("Gelben Zielpunkt anzeigen");
+        showTarget.setTextColor(0xffe4edf9);
+        showTarget.setTextSize(15);
+        showTarget.setPadding(dp(8),0,dp(8),0);
+        showTarget.setChecked(true);
+        showTarget.setOnCheckedChangeListener((buttonView,checked)->{
+            view.showTarget=checked;
+            view.invalidate();
+        });
+        session.addView(showTarget,new LinearLayout.LayoutParams(-1,dp(52)));
         ScrollView detailsScroll=new ScrollView(this); screen.addView(detailsScroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout details=new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setPadding(dp(12),0,dp(12),dp(16)); detailsScroll.addView(details);
         LinearLayout results=card(details,"Dein Verlauf","Bildbasierte Messwerte · keine medizinische Bewertung");
@@ -207,6 +220,22 @@ public final class MainActivity extends ComponentActivity {
         public void onStartTrackingTouch(SeekBar s) {} public void onStopTrackingTouch(SeekBar s) {} }; }
     private Button button(String text,LinearLayout parent,Runnable action) { Button b=new Button(this); b.setText(text); styleButton(b,text.equals("Start")); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1); lp.setMargins(dp(3),dp(4),dp(3),dp(4)); parent.addView(b,lp); b.setOnClickListener(v->action.run()); return b; }
     private void setStatus(String s) { String text=(camera?"Kamera · ":"Demo – simulierte Daten · ")+s; if(!text.contentEquals(status.getText()))status.setText(text); }
+
+    /** Camera FPS and processing duration describe the analyzed frames, not preview FPS. */
+    private void updateCameraStatistics(long delivered,long processingMs) {
+        if(performanceWindowStart==0) performanceWindowStart=delivered;
+        completedFrames++;
+        processingTimeSum+=Math.max(0,processingMs);
+        long elapsed=delivered-performanceWindowStart;
+        if(elapsed>=1000) {
+            int fps=(int)Math.round(completedFrames*1000.0/elapsed);
+            long ms=Math.round(processingTimeSum/(double)completedFrames);
+            badge.setText("Laserfollow · "+fps+" Bilder/s · "+ms+" ms Verarbeitung");
+            completedFrames=0;
+            processingTimeSum=0;
+            performanceWindowStart=delivered;
+        }
+    }
     private void updateControls() {
         start.setEnabled(!running && !calibrating && (!camera || cameraReady && view.region!=null));
         pause.setEnabled(running); stop.setEnabled(running); pause.setText(paused?"Weiter":"Pause");
@@ -214,8 +243,8 @@ public final class MainActivity extends ComponentActivity {
     }
     private void renderMetrics() {
         String prefix=camera?"Kamera-Ergebnis":"Demo – simulierte Daten";
-        if(!metrics.sufficientData()) result.setText(prefix+"\nUnzureichende Daten · mindestens 0,5 s gültig erfassen");
-        else result.setText(String.format(Locale.GERMAN,"%s\nNächster Bahnabstand: %.2f %%\nAbstand zum Taktpunkt: %.2f %%\nJeweils Mittelwert in %% der Bereichsdiagonale\nErfasst: %.1f s · Erkennungsabdeckung: %.1f %%",prefix,metrics.meanErrorPercent(),metrics.meanTargetErrorPercent(),metrics.trackedSeconds(),metrics.coveragePercent()));
+        if(!metrics.sufficientData()) result.setText(prefix+"\nUnzureichende Daten · mindestens 5 gültige Positionen und 0,5 s zusammenhängende Erfassung");
+        else result.setText(String.format(Locale.GERMAN,"%s\nBahngenauigkeit: %.0f %% der erkannten Positionen\nToleranz: 2 %% der Bereichsdiagonale\nNächster Bahnabstand: %.2f %%\nAbstand zum Taktpunkt: %.2f %%\nErfasst: %.1f s · Erkennungsabdeckung: %.1f %%\nDie Bahngenauigkeit berücksichtigt keine Erkennungslücken.",prefix,metrics.pathAccuracyPercent(),metrics.meanErrorPercent(),metrics.meanTargetErrorPercent(),metrics.trackedSeconds(),metrics.coveragePercent()));
     }
     private void reset(String message) { configuration++; running=false; paused=false; phase=0; lastTargetTick=0; view.clearFrame(); metrics.reset(); view.phase=0; view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
     private void startSession() { if(camera && (!cameraReady || view.region==null) || calibrating) return; configuration++; view.clearFrame(); metrics.reset(); phase=0; lastTargetTick=SystemClock.elapsedRealtime(); running=true; paused=false; view.phase=0; view.observation(null); setStatus("Läuft · Punkt suchen"); renderMetrics(); updateControls(); }
@@ -322,6 +351,7 @@ public final class MainActivity extends ComponentActivity {
                 observation=detector.detect(rgb.pixels(),rgb.width(),rgb.height(),color,roi);
             }
             Detector.Result detected=observation;
+            long processingMs=SystemClock.elapsedRealtime()-now;
             main.post(()->{
                 try {
                     if(token!=generation || !foreground || !camera) return;
@@ -342,6 +372,7 @@ public final class MainActivity extends ComponentActivity {
                     if(changed) { view.region=null; detectionRegion=null; view.first=null; calibrating=false; reset(firstFrame?"Kamerabild bereit. Wandbereich kalibrieren.":"Bildgeometrie geändert. Bitte neu kalibrieren."); }
                     if(view.region!=null) detectionRegion=mapping.sourceRegion(view.region);
                     long delivered=SystemClock.elapsedRealtime();
+                    updateCameraStatistics(delivered,processingMs);
                     lastFrameTime=delivered;
                     if(!cameraReady) { cameraReady=true; updateControls(); }
                     if(!changed && config==configuration && delivered-now<=OBSERVATION_TOO_OLD_MS) {
@@ -371,6 +402,7 @@ public final class MainActivity extends ComponentActivity {
     }
     private void closeCamera() {
         generation++; cameraReady=false; frameWidth=frameHeight=0; frameRotation=-1;
+        performanceWindowStart=0; completedFrames=0; processingTimeSum=0;
         mapping=null; preview=null;
         if(cameraState!=null) { cameraState.removeObservers(this); cameraState=null; }
         if(analysis!=null) { analysis.clearAnalyzer(); analysis=null; }
