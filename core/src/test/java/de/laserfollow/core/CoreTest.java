@@ -29,25 +29,25 @@ public class CoreTest {
     }
     @Test public void saturatedWhiteCenterStillDetectsColoredHalo() {
         int[] p=image();
-        blob(p,30,40,7,0xffd06864);
-        blob(p,32,42,3,0xffffffff);
+        blob(p,30,40,3,0xffd06864);
+        blob(p,31,41,1,0xffffffff);
         Result result=detect(p,Color.RED);
         assertEquals(State.DETECTED,result.state());
-        assertEquals(.335,result.point().x(),1e-9);
-        assertEquals(.435,result.point().y(),1e-9);
+        assertEquals(.315,result.point().x(),1e-9);
+        assertEquals(.415,result.point().y(),1e-9);
     }
     @Test public void paleRedLaserRemainsVisible() {
         int[] p=image();
-        blob(p,30,40,4,0xffaa7873);
+        blob(p,30,40,3,0xffaa7873);
         assertEquals(State.DETECTED,detect(p,Color.RED).state());
     }
     @Test public void faintRedHaloNeedsStrongColorSeed() {
         int[] p=image();
-        blob(p,30,40,7,0xff9d8380);
-        blob(p,30,40,2,0xffee6b6b);
-        blob(p,32,42,3,0xffffffff);
+        blob(p,30,40,3,0xff9d8380);
+        blob(p,30,40,1,0xffee6b6b);
+        blob(p,31,41,1,0xffffffff);
         assertEquals(State.DETECTED,detect(p,Color.RED).state());
-        blob(p,30,40,7,0xff9d8380);
+        blob(p,30,40,3,0xff9d8380);
         assertEquals(State.MISSING,detect(p,Color.RED).state());
     }
     @Test public void neutralWhiteAndPinkishGlareAreNotLaser() {
@@ -59,10 +59,10 @@ public class CoreTest {
     }
     @Test public void ambiguousSaturatedHalosRemainAmbiguous() {
         int[] p=image();
-        blob(p,20,20,5,0xffe05040);
-        blob(p,22,22,1,0xffffffff);
-        blob(p,65,65,5,0xffe05040);
-        blob(p,67,67,1,0xffffffff);
+        blob(p,20,20,3,0xffe05040);
+        blob(p,21,21,1,0xffffffff);
+        blob(p,65,65,3,0xffe05040);
+        blob(p,66,66,1,0xffffffff);
         assertEquals(State.AMBIGUOUS,detect(p,Color.RED).state());
     }
     @Test public void regionConversionPreservesImageCoordinatesAndGuardBand() {
