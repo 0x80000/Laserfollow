@@ -1,0 +1,31 @@
+name: Android prototype verification
+
+on:
+  pull_request:
+    branches: [factory/android-prototype]
+  push:
+    branches: [fix/stable-camera-start-laser-detection-20261105]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Run core regression tests, Android lint and build debug APK
+        run: ./gradlew --no-daemon :core:test :app:lintDebug :app:assembleDebug
+      - name: Upload prototype test APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: laserfollow-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
