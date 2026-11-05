@@ -27,6 +27,57 @@ public class CoreTest {
         int[] p=image(); blob(p,30,30,20,0xffff0000);
         assertEquals(State.MISSING,detector.detect(p,100,100,Color.RED,new Region(.48,.48,.9,.9)).state());
     }
+    @Test public void saturatedWhiteCenterStillDetectsColoredHalo() {
+        int[] p=image();
+        blob(p,30,40,3,0xffd06864);
+        blob(p,31,41,1,0xffffffff);
+        Result result=detect(p,Color.RED);
+        assertEquals(State.DETECTED,result.state());
+        assertEquals(.315,result.point().x(),1e-9);
+        assertEquals(.415,result.point().y(),1e-9);
+    }
+    @Test public void paleRedLaserRemainsVisible() {
+        int[] p=image();
+        blob(p,30,40,3,0xffaa7873);
+        assertEquals(State.DETECTED,detect(p,Color.RED).state());
+    }
+    @Test public void faintRedHaloNeedsStrongColorSeed() {
+        int[] p=image();
+        blob(p,30,40,3,0xff9d8380);
+        blob(p,30,40,1,0xffee6b6b);
+        blob(p,31,41,1,0xffffffff);
+        assertEquals(State.DETECTED,detect(p,Color.RED).state());
+        blob(p,30,40,3,0xff9d8380);
+        assertEquals(State.MISSING,detect(p,Color.RED).state());
+    }
+    @Test public void neutralWhiteAndPinkishGlareAreNotLaser() {
+        int[] p=image();
+        blob(p,30,40,5,0xffffffff);
+        assertEquals(State.MISSING,detect(p,Color.RED).state());
+        blob(p,30,40,5,0xfff2eee8);
+        assertEquals(State.MISSING,detect(p,Color.RED).state());
+    }
+    @Test public void ambiguousSaturatedHalosRemainAmbiguous() {
+        int[] p=image();
+        blob(p,20,20,3,0xffe05040);
+        blob(p,21,21,1,0xffffffff);
+        blob(p,65,65,3,0xffe05040);
+        blob(p,66,66,1,0xffffffff);
+        assertEquals(State.AMBIGUOUS,detect(p,Color.RED).state());
+    }
+    @Test public void regionConversionPreservesImageCoordinatesAndGuardBand() {
+        ByteBuffer y=ByteBuffer.allocate(100),u=ByteBuffer.allocate(25),v=ByteBuffer.allocate(25);
+        for(int i=0;i<100;i++)y.put(i,(byte)80);
+        for(int i=0;i<25;i++) {u.put(i,(byte)128);v.put(i,(byte)128);}
+        Yuv.Plane yy=new Yuv.Plane(y,10,1),uu=new Yuv.Plane(u,5,1),vv=new Yuv.Plane(v,5,1);
+        Yuv.Frame all=Yuv.bounded(yy,uu,vv,0,0,10,10,10,Yuv.Range.FULL);
+        Yuv.Frame cropped=Yuv.bounded(yy,uu,vv,0,0,10,10,10,Yuv.Range.FULL,new Region(.2,.2,.8,.8));
+        assertEquals(all.width(),cropped.width());
+        assertEquals(all.height(),cropped.height());
+        assertEquals(all.pixels()[5*10+5],cropped.pixels()[5*10+5]);
+        assertEquals(0,cropped.pixels()[0]);
+        assertEquals(all.pixels()[1*10+5],cropped.pixels()[1*10+5]); // border guard
+    }
     @Test public void circleRemainsCircularInWideAndTallImages() {
         Region r=new Region(.1,.2,.9,.8);
         for(double aspect:new double[]{.75,4.0/3,2}) {
@@ -35,6 +86,25 @@ public class CoreTest {
             assertEquals((right.x()-.5)*aspect,bottom.y()-.5,1e-9);
             assertEquals(0,Geometry.pathDistance(right,Shape.CIRCLE,r,1,aspect),1e-9);
         }
+    }
+    @Test public void pathAccuracyUsesOnlyValidDetectionsAndTolerance() {
+        SessionMetrics m=new SessionMetrics();
+        for(int i=0;i<10;i++) {
+            m.observe(i*.1,true,i<6?.019:.025,.02);
+        }
+        m.observe(1.0,false,Double.NaN);
+        assertTrue(m.sufficientData());
+        assertEquals(60,m.pathAccuracyPercent(),1e-9);
+        assertEquals(10,m.samples());
+        m.reset();
+        assertTrue(Double.isNaN(m.pathAccuracyPercent()));
+        assertEquals(0,m.samples());
+    }
+    @Test public void pathAccuracyCountsBoundaryOfTwoPercent() {
+        SessionMetrics m=new SessionMetrics();
+        m.observe(0,true,.02,.0);
+        m.observe(.1,true,.020001,.0);
+        assertEquals(50,m.pathAccuracyPercent(),1e-9);
     }
     @Test public void longCameraOutageLowersCoverage() {
         SessionMetrics m=new SessionMetrics(); m.observe(0,true,.1); m.observe(.1,true,.1);

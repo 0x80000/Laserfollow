@@ -52,26 +52,47 @@ public final class MainActivity extends ComponentActivity {
     private TextView status,result,badge;
     private Button start,pause,stop,calibrate;
     private boolean camera,running,paused,calibrating,foreground;
+    // Readiness is based on an established preview mapping, not on one slow frame.
+    private static final long CAMERA_STALE_MS=2500;
+    private static final long OBSERVATION_TOO_OLD_MS=750;
     private boolean cameraReady;
     private double phase,period=12,size=.7;
     private Shape shape=Shape.CIRCLE;
-    private long lastFrameTime,lastAccepted;
+    private long lastFrameTime,lastAccepted,lastTargetTick;
+    private long performanceWindowStart,processingTimeSum;
+    private int completedFrames;
     private int frameWidth,frameHeight,frameRotation=-1;
     private ActivityResultLauncher<String> permission;
+    /** The target follows elapsed time, even when no laser or camera frame is detected. */
+    private void advanceTarget(long now) {
+        if(!running || paused) { lastTargetTick=0; return; }
+        if(lastTargetTick>0 && now>lastTargetTick) {
+            phase+=(now-lastTargetTick)/(1000.0*period);
+            view.phase=phase;
+            view.invalidate();
+        }
+        lastTargetTick=now;
+    }
     private final Runnable ticker=new Runnable() {
         @Override public void run() {
             if(!foreground) return;
             long now=SystemClock.elapsedRealtime();
+            advanceTarget(now);
             if(!camera && running && !paused) {
                 Point p=Geometry.point(shape,phase+.012,view.region,size,view.imageAspect());
                 p=new Point(p.x()+.012*Math.sin(now/380.0),p.y()+.009*Math.cos(now/530.0));
                 accept(new Detector.Result(Detector.State.DETECTED,p),now);
-            } else if(camera && now-lastFrameTime>350) {
-                view.observation(null);
-                cameraReady=false; updateControls();
+            } else if(camera && now-lastFrameTime>OBSERVATION_TOO_OLD_MS) {
+                if(view.spot!=null) view.observation(null);
+                if(cameraReady && now-lastFrameTime>CAMERA_STALE_MS) {
+                    cameraReady=false;
+                    updateControls();
+                }
                 if(running && !paused) {
-                    metrics.observe(now/1000.0,false,Double.NaN); renderMetrics();
-                    setStatus("Kein aktuelles Kamerabild – Ziel wartet");
+                    metrics.observe(now/1000.0,false,Double.NaN);
+                    renderMetrics();
+                    setStatus(cameraReady?"Kamerabild verzögert – Ziel läuft weiter":
+                        "Kamera liefert keine aktuellen Bilder – Ziel läuft weiter");
                 }
             }
             main.postDelayed(this,100);
@@ -140,6 +161,17 @@ public final class MainActivity extends ComponentActivity {
         LinearLayout quick=new LinearLayout(this); session.addView(quick);
         calibrate=button("Bereich festlegen",quick,()->{});
         button("Kamera neu öffnen",quick,()->{ closeCamera(); view.clearFrame(); view.region=null; detectionRegion=null; reset("Kamera wird vorbereitet"); permissionDenied=false; ensurePermission(); });
+        Switch showTarget=new Switch(this);
+        showTarget.setText("Gelben Zielpunkt anzeigen");
+        showTarget.setTextColor(0xffe4edf9);
+        showTarget.setTextSize(15);
+        showTarget.setPadding(dp(8),0,dp(8),0);
+        showTarget.setChecked(true);
+        showTarget.setOnCheckedChangeListener((buttonView,checked)->{
+            view.showTarget=checked;
+            view.invalidate();
+        });
+        session.addView(showTarget,new LinearLayout.LayoutParams(-1,dp(52)));
         ScrollView detailsScroll=new ScrollView(this); screen.addView(detailsScroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout details=new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setPadding(dp(12),0,dp(12),dp(16)); detailsScroll.addView(details);
         LinearLayout results=card(details,"Dein Verlauf","Bildbasierte Messwerte · keine medizinische Bewertung");
@@ -169,7 +201,7 @@ public final class MainActivity extends ComponentActivity {
             view.invalidate(); updateControls();
         };
         LinearLayout info=card(details,"Gut vorbereitet","Bitte vor der ersten Kameraübung lesen.");
-        info.addView(label("Türkis: Bahn · Gelb: Ziel · Weiß: aktueller Punkt · Blau: Bewegungsspur der letzten 3.000 Beobachtungen. Pause und Stopp behalten die Spur. Start und neue Einstellungen löschen sie. Erkennungslücken werden nicht verbunden. Bei fehlendem oder mehrdeutigem Punkt wartet das Ziel. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
+        info.addView(label("Türkis: Bahn · Gelber Ring: bewegtes Ziel · Weiß: aktueller Punkt · Blau: Bewegungsspur der letzten 3.000 Beobachtungen. Pause und Stopp behalten die Spur. Start und neue Einstellungen löschen sie. Erkennungslücken werden nicht verbunden. Das Ziel läuft auch bei fehlender Lasererkennung weiter. Stillhalten auf der Bahn bedeutet nicht, dass die Form nachgefahren wurde.",14));
         info.addView(label("Fester Bildbereich für Stativbetrieb, keine AR-Verankerung. Bei bewegtem Telefon wandert die Wand hinter der Markierung: dann neu kalibrieren. Nur Bildkoordinaten, keine Zentimeter oder Halswinkel.",14));
         info.addView(label("Physio-Forschungsprototyp, nicht klinisch validiert. Nur mit professioneller Begleitung. Bei Schmerzen oder Schwindel stoppen. Laser niemals auf Augen, Menschen oder reflektierende Flächen richten.",14));
         info.addView(label("Erkennungsgrenzen: weiße überbelichtete Zentren, Sonne, Reflexionen und farbige Gegenstände können die Messung stören. Keine Gesundheits- oder Erholungsbewertung. Keine Speicherung von Bildern oder Sitzungen.",14));
@@ -188,6 +220,22 @@ public final class MainActivity extends ComponentActivity {
         public void onStartTrackingTouch(SeekBar s) {} public void onStopTrackingTouch(SeekBar s) {} }; }
     private Button button(String text,LinearLayout parent,Runnable action) { Button b=new Button(this); b.setText(text); styleButton(b,text.equals("Start")); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1); lp.setMargins(dp(3),dp(4),dp(3),dp(4)); parent.addView(b,lp); b.setOnClickListener(v->action.run()); return b; }
     private void setStatus(String s) { String text=(camera?"Kamera · ":"Demo – simulierte Daten · ")+s; if(!text.contentEquals(status.getText()))status.setText(text); }
+
+    /** Camera FPS and processing duration describe the analyzed frames, not preview FPS. */
+    private void updateCameraStatistics(long delivered,long processingMs) {
+        if(performanceWindowStart==0) performanceWindowStart=delivered;
+        completedFrames++;
+        processingTimeSum+=Math.max(0,processingMs);
+        long elapsed=delivered-performanceWindowStart;
+        if(elapsed>=1000) {
+            int fps=(int)Math.round(completedFrames*1000.0/elapsed);
+            long ms=Math.round(processingTimeSum/(double)completedFrames);
+            badge.setText("Laserfollow · "+fps+" Bilder/s · "+ms+" ms Verarbeitung");
+            completedFrames=0;
+            processingTimeSum=0;
+            performanceWindowStart=delivered;
+        }
+    }
     private void updateControls() {
         start.setEnabled(!running && !calibrating && (!camera || cameraReady && view.region!=null));
         pause.setEnabled(running); stop.setEnabled(running); pause.setText(paused?"Weiter":"Pause");
@@ -195,22 +243,23 @@ public final class MainActivity extends ComponentActivity {
     }
     private void renderMetrics() {
         String prefix=camera?"Kamera-Ergebnis":"Demo – simulierte Daten";
-        if(!metrics.sufficientData()) result.setText(prefix+"\nUnzureichende Daten · mindestens 0,5 s gültig erfassen");
-        else result.setText(String.format(Locale.GERMAN,"%s\nNächster Bahnabstand: %.2f %%\nAbstand zum Taktpunkt: %.2f %%\nJeweils Mittelwert in %% der Bereichsdiagonale\nErfasst: %.1f s · Erkennungsabdeckung: %.1f %%",prefix,metrics.meanErrorPercent(),metrics.meanTargetErrorPercent(),metrics.trackedSeconds(),metrics.coveragePercent()));
+        if(!metrics.sufficientData()) result.setText(prefix+"\nUnzureichende Daten · mindestens 5 gültige Positionen und 0,5 s zusammenhängende Erfassung");
+        else result.setText(String.format(Locale.GERMAN,"%s\nBahngenauigkeit: %.0f %% der erkannten Positionen\nToleranz: 2 %% der Bereichsdiagonale\nNächster Bahnabstand: %.2f %%\nAbstand zum Taktpunkt: %.2f %%\nErfasst: %.1f s · Erkennungsabdeckung: %.1f %%\nDie Bahngenauigkeit berücksichtigt keine Erkennungslücken.",prefix,metrics.pathAccuracyPercent(),metrics.meanErrorPercent(),metrics.meanTargetErrorPercent(),metrics.trackedSeconds(),metrics.coveragePercent()));
     }
-    private void reset(String message) { configuration++; running=false; paused=false; phase=0; view.clearFrame(); metrics.reset(); view.phase=0; view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
-    private void startSession() { if(camera && (!cameraReady || view.region==null) || calibrating) return; configuration++; view.clearFrame(); metrics.reset(); phase=0; running=true; paused=false; view.phase=0; view.observation(null); setStatus("Läuft · Punkt suchen"); renderMetrics(); updateControls(); }
-    private void togglePause() { if(!running)return; configuration++; paused=!paused; metrics.breakContinuity(); view.observation(null); setStatus(paused?"Pausiert":"Fortgesetzt · Punkt suchen"); updateControls(); }
-    private void stopSession(String message) { configuration++; running=false; paused=false; metrics.breakContinuity(); view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
+    private void reset(String message) { configuration++; running=false; paused=false; phase=0; lastTargetTick=0; view.clearFrame(); metrics.reset(); view.phase=0; view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
+    private void startSession() { if(camera && (!cameraReady || view.region==null) || calibrating) return; configuration++; view.clearFrame(); metrics.reset(); phase=0; lastTargetTick=SystemClock.elapsedRealtime(); running=true; paused=false; view.phase=0; view.observation(null); setStatus("Läuft · Punkt suchen"); renderMetrics(); updateControls(); }
+    private void togglePause() { if(!running)return; configuration++; paused=!paused; lastTargetTick=paused?0:SystemClock.elapsedRealtime(); metrics.breakContinuity(); view.observation(null); setStatus(paused?"Pausiert":"Fortgesetzt · Punkt suchen"); updateControls(); }
+    private void stopSession(String message) { configuration++; running=false; paused=false; lastTargetTick=0; metrics.breakContinuity(); view.observation(null); renderMetrics(); setStatus(message); updateControls(); }
     private void accept(Detector.Result observation,long now) {
         if(!running || paused) { view.observation(null); return; }
+        advanceTarget(now);
         boolean valid=observation.state()==Detector.State.DETECTED;
         double error=valid?Geometry.pathDistance(observation.point(),shape,view.region,size,view.imageAspect())/view.region.diagonal(view.imageAspect()):Double.NaN;
         Point target=Geometry.point(shape,phase,view.region,size,view.imageAspect());
         double targetError=valid?Math.hypot((observation.point().x()-target.x())*view.imageAspect(),observation.point().y()-target.y())/view.region.diagonal(view.imageAspect()):Double.NaN;
-        double dt=metrics.observe(now/1000.0,valid,error,targetError);
-        phase+=dt/period; view.phase=phase; view.observation(valid?observation.point():null);
-        setStatus(switch(observation.state()) { case DETECTED->"Punkt erkannt · läuft"; case MISSING->"Punkt fehlt – Ziel wartet"; case AMBIGUOUS->"Mehrere Punkte / mehrdeutig – Ziel wartet"; });
+        metrics.observe(now/1000.0,valid,error,targetError);
+        view.observation(valid?observation.point():null);
+        setStatus(switch(observation.state()) { case DETECTED->"Punkt erkannt · läuft"; case MISSING->"Punkt fehlt – Ziel läuft weiter"; case AMBIGUOUS->"Mehrere Punkte / mehrdeutig – Ziel läuft weiter"; });
         renderMetrics();
     }
     private void switchMode(boolean useCamera) {
@@ -298,15 +347,21 @@ public final class MainActivity extends ComponentActivity {
                         space==android.hardware.DataSpace.DATASPACE_BT709 ||
                         space==android.hardware.DataSpace.DATASPACE_BT2020) range=Yuv.Range.LIMITED;
                 }
-                Yuv.Frame rgb=Yuv.bounded(y,u,v,crop.left,crop.top,w,h,640,range);
+                Yuv.Frame rgb=Yuv.bounded(y,u,v,crop.left,crop.top,w,h,640,range,roi);
                 observation=detector.detect(rgb.pixels(),rgb.width(),rgb.height(),color,roi);
             }
             Detector.Result detected=observation;
+            long processingMs=SystemClock.elapsedRealtime()-now;
             main.post(()->{
                 try {
                     if(token!=generation || !foreground || !camera) return;
                     OutputTransform target=previewView.getOutputTransform();
-                    if(target==null) { cameraReady=false; mapping=null; view.observation(null); updateControls(); return; }
+                    if(target==null) {
+                        // One late/unavailable preview transform must not flicker Start.
+                        mapping=null; view.observation(null);
+                        setStatus("Kameraansicht noch nicht bereit");
+                        return;
+                    }
                     Matrix matrix=new Matrix();
                     new CoordinateTransform(source,target).transform(matrix);
                     float[] values=new float[9]; matrix.getValues(values);
@@ -317,21 +372,23 @@ public final class MainActivity extends ComponentActivity {
                     if(changed) { view.region=null; detectionRegion=null; view.first=null; calibrating=false; reset(firstFrame?"Kamerabild bereit. Wandbereich kalibrieren.":"Bildgeometrie geändert. Bitte neu kalibrieren."); }
                     if(view.region!=null) detectionRegion=mapping.sourceRegion(view.region);
                     long delivered=SystemClock.elapsedRealtime();
-                    lastFrameTime=now; cameraReady=delivered-now<=350;
-                    updateControls();
-                    if(!changed && config==configuration && cameraReady) {
+                    updateCameraStatistics(delivered,processingMs);
+                    lastFrameTime=delivered;
+                    if(!cameraReady) { cameraReady=true; updateControls(); }
+                    if(!changed && config==configuration && delivered-now<=OBSERVATION_TOO_OLD_MS) {
                         Detector.Result mapped=detected;
                         if(detected.state()==Detector.State.DETECTED) {
                             Point point=mapping.toPreview(detected.point());
                             mapped=view.region!=null && view.region.contains(point.x(),point.y())?
                                 new Detector.Result(Detector.State.DETECTED,point):Detector.Result.missing();
                         }
-                        accept(mapped,now);
+                        accept(mapped,delivered);
                     }
                     else {
                         view.observation(null);
                         if(running && !paused) { metrics.observe(delivered/1000.0,false,Double.NaN); renderMetrics(); }
-                        if(!cameraReady) setStatus("Bildverarbeitung zu langsam – Ziel wartet");
+                        if(!changed && delivered-now>OBSERVATION_TOO_OLD_MS)
+                            setStatus("Bildverarbeitung verzögert – Ziel läuft weiter");
                     }
                 } catch(IllegalArgumentException | IllegalStateException e) {
                     mapping=null; cameraReady=false; view.region=null; detectionRegion=null; calibrating=false;
@@ -345,6 +402,7 @@ public final class MainActivity extends ComponentActivity {
     }
     private void closeCamera() {
         generation++; cameraReady=false; frameWidth=frameHeight=0; frameRotation=-1;
+        performanceWindowStart=0; completedFrames=0; processingTimeSum=0;
         mapping=null; preview=null;
         if(cameraState!=null) { cameraState.removeObservers(this); cameraState=null; }
         if(analysis!=null) { analysis.clearAnalyzer(); analysis=null; }

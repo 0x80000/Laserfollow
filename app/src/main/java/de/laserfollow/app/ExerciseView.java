@@ -28,6 +28,7 @@ final class ExerciseView extends View {
     double size=.7,phase;
     Point spot,first;
     boolean demo=true;
+    boolean showTarget=true;
     Tap tap;
     ExerciseView(Context c) { super(c); setMinimumHeight(260); setContentDescription("Kamerabild mit Übungsbahn; zum Kalibrieren zwei gegenüberliegende Ecken antippen"); }
     void clearFrame() { spot=null; trail.clear(); gap=true; invalidate(); }
@@ -57,7 +58,14 @@ final class ExerciseView extends View {
                 cachedWidth=getWidth(); cachedHeight=getHeight(); cachedDemo=demo;
             }
             paint.setColor(0xff68e0c5); paint.setStrokeWidth(4); c.drawPath(path,paint);
-            Point target=Geometry.point(shape,phase,region,size,imageAspect()); paint.setStyle(Paint.Style.FILL); paint.setColor(0xffffd381); c.drawCircle(px(target.x()),py(target.y()),10,paint);
+            // Hollow ring: the actual red or green laser remains visible underneath.
+            if(showTarget) {
+                Point target=Geometry.point(shape,phase,region,size,imageAspect());
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(4*getResources().getDisplayMetrics().density);
+                paint.setColor(0xffffd381);
+                c.drawCircle(px(target.x()),py(target.y()),12*getResources().getDisplayMetrics().density,paint);
+            }
         }
         paint.setStyle(Paint.Style.STROKE); paint.setColor(0xff84bfff);
         paint.setStrokeWidth(2.5f*getResources().getDisplayMetrics().density);

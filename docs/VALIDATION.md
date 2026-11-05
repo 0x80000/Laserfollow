@@ -1,5 +1,59 @@
 # Prüfstand des ersten Prototyps
 
+## Abgleich der Tester-Oberfläche vom 5. November 2026
+
+Die beim Tester sichtbare APK wurde nicht aus einem vorhandenen GitHub-Commit
+rekonstruiert: Weder in `main` noch in `factory/android-prototype` oder den
+GitHub-Releases existiert der Quellstand mit FPS-Anzeige, Ein/Aus-Schalter für den
+gelben Zielpunkt und prozentualer Bahngenauigkeit. Auch ein zusätzlicher
+Versionsbranch fehlt. Die Ursache (lokaler, nicht gepushter Quellstand oder
+anderer Build-Pfad) ist nicht abschließend bekannt.
+
+Damit die sichtbaren Tester-Funktionen nicht verloren gehen, wurden sie auf
+dem Fehlerfix-Branch **neu implementiert**:
+
+- Verarbeitungsgeschwindigkeit: Anzahl analysierter Bilder/s und mittlere
+  Bildverarbeitungszeit in ms, ungefähr einmal pro Sekunde aktualisiert.
+- Schalter „Gelben Zielpunkt anzeigen“: steuert nur die Darstellung des
+  gelben Zielrings. Kameraerkennung und Messung bleiben davon unabhängig.
+- Bahngenauigkeit: Prozentanteil der **gültigen Erkennungen** mit maximal
+  2 % Abstand zur Form (relativ zur Diagonale des Übungsbereichs).
+  Erkennungsabdeckung und mittlere Abstände werden separat angegeben.
+  Diese Kennzahl misst nicht den Anteil der gesamten Trainingszeit.
+- Version `0.5-test` (Android `versionCode` 5), für interne Tests.
+
+Der ursprüngliche **vollständige** Quellstand der Tester-APK ist nicht
+zugänglich. Weitere dort eventuell implementierte Änderungen können daher
+nicht garantiert erhalten werden. Ein direkter Diff zur APK wurde nicht
+durchgeführt. Die vorliegenden Änderungen sind eine Funktions-Rekonstruktion,
+keine bestätigte Identität der beiden Versionen.
+
+## Fehlerkorrektur vom 5. November 2026 – noch nicht am Testergerät bestätigt
+
+Nach Testerfeedback (blinkender Start-Button bei ca. 4 statt 9 Auswertungen/s,
+roter Laser mit weißem Zentrum zeitweise nicht erkannt) auf einem separaten
+Feature-Branch umgesetzt:
+
+- Startfreigabe nach einer gültigen Kamerabild-Zuordnung stabil halten,
+  statt sie von jedem einzelnen 350-ms-Latenzlimit abhängig zu machen.
+  Nach mehr als 2,5 s ohne verarbeitetes Kamerabild bleibt ein echter
+  Kameraausfall weiterhin erkennbar.
+- Die Zielbewegung folgt jetzt monotoner Zeit statt gültigen Messwerten und
+  läuft bei Erkennungslücken weiter; Pause/Weiter bleibt wirksam.
+- YUV-Konvertierung nur im kalibrierten Rechteck plus Randwächter; die
+  Ausgabe-Koordinaten bleiben auf das vollständige Kamerabild bezogen.
+- Färbige Laserränder und überbelichtete weiße Kerne zusammen bewerten.
+  Neutral weiße Lichtpunkte und mehrdeutige Kandidaten bleiben ausgeschlossen.
+- Gelber Punkt als offener Ring, damit das reale Laserbild sichtbar bleibt.
+- Sechs zusätzliche automatische Tests für Laserränder, Überbelichtung,
+  Mehrdeutigkeit und ROI-Verarbeitung.
+
+GitHub Actions: Java-Kerntests, Android-Lint und Debug-APK-Build erfolgreich.
+**Noch ausstehend:** Realgerätetest unter derselben Beleuchtung und Abgleich
+mit der vom Tester installierten APK. Die Screenshots zeigen zusätzliche
+FPS- und UI-Elemente, die nicht in den veröffentlichten Branch-Quellen stehen.
+Diese Fehlerkorrektur sollte deshalb erst nach Quellstandabgleich verteilt werden.
+
 Stand: 2. November 2026.
 
 ## Version 0.4: Kamera und Bewegungsspur

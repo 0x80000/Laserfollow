@@ -11,7 +11,7 @@ im Smartphone-Kamerabild eingeblendet. Kein Projektor und keine Wandvorlage nöt
 - Kalibrierung eines rechteckigen Bildbereichs durch zwei Eckpunkte.
 - Bahn, bewegter Taktpunkt, erkannter Punkt und kurze Spur im selben Bildkoordinatensystem.
 - Start, Pause/Weiter, Stopp; keine automatische Fortsetzung nach Hintergrundwechsel.
-- Fehlende und mehrdeutige Erkennung hält den Taktpunkt an und trägt keinen Fehlerwert bei.
+- Fehlende und mehrdeutige Erkennung trägt keinen Fehlerwert bei; ab dem Kamerastabilitäts-Fix läuft der Taktpunkt unabhängig weiter.
 - Bahnabstand und Taktpunktabstand getrennt, Erkennungsabdeckung und erfasste Dauer.
 - Keine klinische Gesamtnote, keine Winkel-/Zentimeterangaben, keine Therapieempfehlung.
 - Lokale Bildverarbeitung; keine Bild- oder Sitzungsspeicherung und kein Netzwerkzugriff.
