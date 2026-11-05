@@ -19,11 +19,23 @@ public final class Yuv {
         return out;
     }
     public static Frame bounded(Plane y,Plane u,Plane v,int left,int top,int width,int height,int maxEdge,Range range) {
+        return bounded(y,u,v,left,top,width,height,maxEdge,range,null);
+    }
+    /**
+     * Convert only the calibrated source region. Keep a one-pixel guard outside it
+     * so the detector can still reject colored objects clipped by the ROI border.
+     * Output coordinates always refer to the FULL source image.
+     */
+    public static Frame bounded(Plane y,Plane u,Plane v,int left,int top,int width,int height,int maxEdge,Range range,de.laserfollow.core.Geometry.Region roi) {
         if(width<=0 || height<=0 || maxEdge<=0) throw new IllegalArgumentException("Bildgröße");
         int step=Math.max(1,(Math.max(width,height)+maxEdge-1)/maxEdge);
         int w=(width+step-1)/step,h=(height+step-1)/step;
         int[] pixels=new int[w*h];
-        for(int row=0;row<h;row++) for(int col=0;col<w;col++) {
+        int x0=roi==null?0:Math.max(0,(int)Math.floor(roi.left()*width/step)-1);
+        int x1=roi==null?w:Math.min(w,(int)Math.ceil(roi.right()*width/step)+1);
+        int y0=roi==null?0:Math.max(0,(int)Math.floor(roi.top()*height/step)-1);
+        int y1=roi==null?h:Math.min(h,(int)Math.ceil(roi.bottom()*height/step)+1);
+        for(int row=y0;row<y1;row++) for(int col=x0;col<x1;col++) {
             int x=left+col*step,z=top+row*step;
             pixels[row*w+col]=color(y.value(x,z),u.value(x/2,z/2),v.value(x/2,z/2),range);
         }
