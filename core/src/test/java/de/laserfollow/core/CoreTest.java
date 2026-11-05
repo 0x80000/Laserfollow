@@ -87,6 +87,25 @@ public class CoreTest {
             assertEquals(0,Geometry.pathDistance(right,Shape.CIRCLE,r,1,aspect),1e-9);
         }
     }
+    @Test public void pathAccuracyUsesOnlyValidDetectionsAndTolerance() {
+        SessionMetrics m=new SessionMetrics();
+        for(int i=0;i<10;i++) {
+            m.observe(i*.1,true,i<6?.019:.025,.02);
+        }
+        m.observe(1.0,false,Double.NaN);
+        assertTrue(m.sufficientData());
+        assertEquals(60,m.pathAccuracyPercent(),1e-9);
+        assertEquals(10,m.samples());
+        m.reset();
+        assertTrue(Double.isNaN(m.pathAccuracyPercent()));
+        assertEquals(0,m.samples());
+    }
+    @Test public void pathAccuracyCountsBoundaryOfTwoPercent() {
+        SessionMetrics m=new SessionMetrics();
+        m.observe(0,true,.02,.0);
+        m.observe(.1,true,.020001,.0);
+        assertEquals(50,m.pathAccuracyPercent(),1e-9);
+    }
     @Test public void longCameraOutageLowersCoverage() {
         SessionMetrics m=new SessionMetrics(); m.observe(0,true,.1); m.observe(.1,true,.1);
         m.observe(5,false,Double.NaN); m.observe(5.1,true,.1);
