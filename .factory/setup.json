@@ -1,0 +1,5 @@
+{
+  "checks": {
+    "test": "bash ./gradlew --no-daemon --max-workers=2 test :app:assembleDebug"
+  }
+}
